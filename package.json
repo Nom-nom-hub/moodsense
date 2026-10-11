@@ -367,6 +367,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.8.0",
+  "version": "0.8.1",
   "icon": "media/icon.png"
 }

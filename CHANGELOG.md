@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.1 — 2026-10-11
+
+- **Typing-click toggle fix:** the setting flipped but clicks stayed
+  silent — the AudioContext was only ever resumed from host messages,
+  and typing in the editor is not a webview user gesture, so Chromium
+  kept it suspended forever. The toggle now unlocks the context inside
+  the click gesture itself and plays one confirmation click in the worn
+  mood's voice, so "on" is something you hear. Panel state is optimistic
+  (no round-trip wait), any panel pointer press re-unlocks, and the
+  click engine no longer depends on the equalizer's mirror graph
+  succeeding
+
+
 ## 0.8.0 — 2026-10-11
 
 Click personalities — the differentiator: a mood now owns how it sounds

@@ -662,6 +662,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     const playBtn = document.getElementById('playBtn');
     let state = null;
     let wantsPlay = true;
+    let clicksOverride = null;
     let baseVolume = 0.7;
     playBtn.innerHTML = PLAY;
 
@@ -727,9 +728,16 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     let eqSawSignal = false;
     let noiseBuf = null;
     function ensureGraph() {
-      if (actx || eqDead) return;
+      if (actx) return;
       try {
         actx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) {
+        eqDead = true;
+        actx = null;
+        return;
+      }
+      if (eqDead) return;
+      try {
         mirror = document.createElement('audio');
         mirror.loop = true;
         mirror.preload = 'auto';
@@ -744,8 +752,10 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         mute.connect(actx.destination);
         eqData = new Uint8Array(analyser.frequencyBinCount);
       } catch (e) {
+        // Mirror analysis unavailable — clicks keep working regardless.
         eqDead = true;
-        actx = null;
+        analyser = null;
+        mirror = null;
       }
     }
     function syncMirror() {
@@ -880,7 +890,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
     }
     function playClick(tier) {
-      if (!state || !state.typingClicks) return;
+      const on = clicksOverride !== null ? clicksOverride : state && state.typingClicks;
+      if (!state || !on) return;
       const p = state.currentMood ? state.profiles[state.currentMood] : null;
       const family = (p && p.clickProfile) || 'tick';
       if (family === 'off') return;
@@ -1000,6 +1011,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
 
       document.getElementById('quietNote').classList.toggle('hidden', !state.quietActive);
+      clicksOverride = !!state.typingClicks;
       document.querySelectorAll('#typingSeg button').forEach((b) => {
         b.classList.toggle('active', (b.dataset.t === '1') === !!state.typingClicks);
       });
@@ -1090,8 +1102,27 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     els.primary.addEventListener('pause', () => { if (!wantsPlay) playBtn.innerHTML = PLAY; });
     document.querySelectorAll('#typingSeg button').forEach((b) => {
       b.addEventListener('click', () => {
-        vscode.postMessage({ type: 'setTypingClicks', value: parseInt(b.dataset.t, 10) });
+        const on = b.dataset.t === '1';
+        clicksOverride = on;
+        document.querySelectorAll('#typingSeg button').forEach((x) => {
+          x.classList.toggle('active', (x.dataset.t === '1') === on);
+        });
+        vscode.postMessage({ type: 'setTypingClicks', value: on ? 1 : 0 });
+        if (on) {
+          // Unlock the AudioContext INSIDE this genuine user gesture and
+          // prove it with one click in the worn mood's voice. Without this,
+          // the context stays suspended (typing in the editor is not a
+          // webview gesture) and clicks are silently swallowed — the toggle
+          // looks broken even though the setting flipped.
+          ensureGraph();
+          if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
+          const p = state && state.currentMood ? state.profiles[state.currentMood] : null;
+          setTimeout(() => emitClick((p && p.clickProfile) || 'tick', 1), 40);
+        }
       });
+    });
+    document.addEventListener('pointerdown', () => {
+      if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
     });
 
     let volTimer;
