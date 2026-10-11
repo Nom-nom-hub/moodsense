@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.3 — 2026-10-11
+
+- **YouTube player errors, translated.** The panel now listens to the
+  embedded player's own error events and explains them in plain
+  language: embedding disabled by the owner (the common one — official
+  label uploads block it; another upload usually works), private or
+  deleted video, or a generic player fault with its code. Play state
+  also syncs the panel's play/pause button with the video.
+- Supersedes 0.9.2, which never shipped: lint caught escaped quotes in
+  the new webview strings that would have broken the panel script; the
+  rendered webview script is now syntax-checked before packaging.
+
+
 ## 0.9.2 — 2026-10-11
 
 - **YouTube player errors, translated.** The panel now listens to the

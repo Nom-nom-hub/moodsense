@@ -932,17 +932,17 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       if (typeof event.data !== 'string') return;
       let host = '';
       try { host = new URL(event.origin).hostname; } catch { return; }
-      if (!/youtube(-nocookie)?\.com$/.test(host)) return;
+      if (!/youtube(-nocookie)?[.]com$/.test(host)) return;
       let data;
       try { data = JSON.parse(event.data); } catch { return; }
       const num = typeof data.info === 'number' ? data.info : typeof data.data === 'number' ? data.data : undefined;
       if (data.event === 'onError' && num !== undefined) {
         if (num === 101 || num === 150) {
-          ytPlayerNote('This video\'s owner has embedding turned off — it can\'t play inside any app. Official label uploads often block it; a lyric video or a different upload of the same song usually works.');
+          ytPlayerNote("This video's owner has embedding turned off — it can't play inside any app. Official label uploads often block it; a lyric video or a different upload of the same song usually works.");
         } else if (num === 100) {
-          ytPlayerNote('That video is private, deleted, or the link\'s id is wrong.');
+          ytPlayerNote("That video is private, deleted, or the link's id is wrong.");
         } else {
-          ytPlayerNote('YouTube\'s player hit an error (' + num + '). Give it a moment and try again.');
+          ytPlayerNote("YouTube's player hit an error (" + num + "). Give it a moment and try again.");
         }
       } else if (data.event === 'onReady') {
         ytPlayerNote('');
