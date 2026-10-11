@@ -263,7 +263,7 @@ async function closeSession(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update(STATE_HISTORY, updated);
 }
 
-async /** Subscribe/unsubscribe the typing tracker to match the setting. */
+/** Subscribe/unsubscribe the typing tracker to match the setting. */
 function syncClicksSubscription(): void {
   const enabled = vscode.workspace
     .getConfiguration('moodsense')
@@ -286,7 +286,7 @@ function syncClicksSubscription(): void {
   }
 }
 
-function runRoutine(context: vscode.ExtensionContext, name: string): Promise<void> {
+async function runRoutine(context: vscode.ExtensionContext, name: string): Promise<void> {
   const routines = sanitizeRoutines(
     vscode.workspace.getConfiguration('moodsense').get<unknown>('routines', []),
   );
