@@ -25,6 +25,25 @@ export const MOOD_ACCENTS: Record<string, string> = {
   energetic: '#FBBF24',
 };
 
+/** The product's icon system: hand-drawn 24px stroke icons, one per mood.
+ *  Inner SVG markup (rendered inside an <svg> with stroke="currentColor").
+ *  No emoji anywhere in the product UI — icons or nothing. */
+export const ICON_SVGS: Record<string, string> = {
+  target:
+    '<circle cx="12" cy="12" r="8.25"/><circle cx="12" cy="12" r="4.25"/><circle cx="12" cy="12" r="0.75" fill="currentColor" stroke="none"/>',
+  leaf:
+    '<path d="M5.5 18.5C5.5 10.8 11.5 5 19.5 5c0 8-5.8 13.5-13.5 13.5"/><path d="M5.5 18.5c2.8-5.3 6.8-9.3 11-11.3"/>',
+  moon:
+    '<path d="M19.8 13.6A8 8 0 1 1 10.4 4.2a6.5 6.5 0 0 0 9.4 9.4z"/>',
+  bolt:
+    '<path d="M13.2 3 5 13.4h5.6L9.4 21l8.2-10.4h-5.6l1.2-7.6z"/>',
+  dot: '<circle cx="12" cy="12" r="3.5"/>',
+};
+
+export function iconSvg(name: string | undefined): string {
+  return ICON_SVGS[name ?? ''] ?? ICON_SVGS.dot;
+}
+
 export const IDLE_ACCENT = '#8B93A7';
 
 export function accentFor(moodId: string | null | undefined): string {

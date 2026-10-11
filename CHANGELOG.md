@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 — 2026-10-11
+
+Design overhaul — remove the generated look:
+
+- **Custom icon system:** hand-drawn 24px stroke icons (target, leaf, moon, bolt) replace all emoji — in the panel, and the emoji are gone from the status bar and mood picker too
+- **Panel rebuilt as a disciplined row list** (Linear/Raycast pattern): icon tile in the mood's hue, label + spec line, active indicator dot — no card grid, no gradients, no glow
+- **Segmented control** for ambient tracks; flat surfaces, hairline borders, 8pt spacing rhythm, radii tightened to 7–8px, transitions shortened to 120ms
+- Profiles now carry an `icon` name instead of an emoji (existing custom profiles keep working; unknown icons fall back to a plain dot)
+
+
 ## 0.2.0 — 2026-10-11
 
 The design release — MoodSense gets a face:

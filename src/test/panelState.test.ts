@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { accentFor, formatCountdown, breakFraction, MOOD_ACCENTS, IDLE_ACCENT } from '../panelState.js';
+import { accentFor, formatCountdown, breakFraction, iconSvg, MOOD_ACCENTS, ICON_SVGS, IDLE_ACCENT } from '../panelState.js';
+import { DEFAULT_PROFILES } from '../moods.js';
 
 describe('panel state helpers', () => {
   it('every built-in mood has a signature accent', () => {
@@ -28,5 +29,17 @@ describe('panel state helpers', () => {
     expect(breakFraction(2_000_000, 1000)).toBe(1);
     expect(breakFraction(-1, 1000)).toBe(0);
     expect(breakFraction(500, 0)).toBe(0);
+  });
+
+  it('every default profile references a real icon in the set', () => {
+    for (const profile of Object.values(DEFAULT_PROFILES)) {
+      expect(ICON_SVGS[profile.icon]).toBeDefined();
+      expect(ICON_SVGS[profile.icon].length).toBeGreaterThan(0);
+    }
+  });
+
+  it('unknown icon names fall back to the plain dot', () => {
+    expect(iconSvg('does-not-exist')).toBe(ICON_SVGS.dot);
+    expect(iconSvg(undefined)).toBe(ICON_SVGS.dot);
   });
 });

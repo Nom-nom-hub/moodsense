@@ -6,7 +6,7 @@ list covers what only a live IDE can prove.
 
 ## Mood switching
 - [ ] Each of the 4 moods applies its theme + font size within ~1s
-- [ ] Status bar shows the active mood with emoji after apply and after reload
+- [ ] Status bar reads "MoodSense: <Mood>" after apply and after reload
 - [ ] Setting a mood in one window does not corrupt another window's editor
       (settings are Global by design in v1 — confirm the behavior is sane)
 

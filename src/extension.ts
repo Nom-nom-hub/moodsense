@@ -133,7 +133,7 @@ async function pickMood(context: vscode.ExtensionContext): Promise<void> {
   const profiles = getProfiles();
   const items: (vscode.QuickPickItem & { action: () => Promise<void> })[] = Object.entries(profiles).map(
     ([id, p]) => ({
-      label: `${p.emoji} ${p.label}`,
+      label: p.label,
       description: `${p.theme} · ${p.fontSize}px · ${p.ambient === 'none' ? 'silent' : p.ambient}`,
       action: () => applyMood(context, id),
     }),
@@ -252,12 +252,12 @@ function updateStatusBar(moodId: string | undefined, profile?: MoodProfile): voi
     return;
   }
   if (!moodId) {
-    statusBar.text = '$(circle-outline) MoodSense';
+    statusBar.text = 'MoodSense';
     statusBar.tooltip = 'MoodSense is off. Click to set your mood.';
     return;
   }
   const p = profile ?? getProfile(moodId);
-  statusBar.text = `${p?.emoji ?? '🎛️'} ${p?.label ?? moodId}`;
+  statusBar.text = `MoodSense: ${p?.label ?? moodId}`;
   statusBar.tooltip = `MoodSense: ${p?.label ?? moodId}. Click to change mood.`;
 }
 

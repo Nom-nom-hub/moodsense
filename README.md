@@ -14,10 +14,10 @@ leaves your machine.
 
 | Mood | Theme | Font | Ambient | Breaks |
 | --- | --- | --- | --- | --- |
-| 🎯 Focused | Default Dark Modern | 14px | Deep drone | Standard |
-| 🌿 Relaxed | Quiet Light | 14px | Rain | Standard |
-| 🌙 Tired | Default Dark Modern | 16px | Rain | More frequent |
-| ⚡ Energetic | Monokai | 13px | Wind | Less frequent |
+| Focused | Default Dark Modern | 14px | Deep drone | Standard |
+| Relaxed | Quiet Light | 14px | Rain | Standard |
+| Tired | Default Dark Modern | 16px | Rain | More frequent |
+| Energetic | Monokai | 13px | Wind | Less frequent |
 
 Every mapping is a setting (`moodsense.profiles`) — change the theme, font,
 sound, or rhythm for any mood, or invent your own moods entirely. Default

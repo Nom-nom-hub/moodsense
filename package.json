@@ -79,8 +79,8 @@
           "default": {
             "energetic": {
               "ambient": "wind",
+              "icon": "bolt",
               "breakIntervalMultiplier": 1.2,
-              "emoji": "\u26a1",
               "fontSize": 13,
               "label": "Energetic",
               "minimap": true,
@@ -89,8 +89,8 @@
             },
             "focused": {
               "ambient": "deep",
+              "icon": "target",
               "breakIntervalMultiplier": 1,
-              "emoji": "\ud83c\udfaf",
               "fontSize": 14,
               "label": "Focused",
               "minimap": false,
@@ -99,8 +99,8 @@
             },
             "relaxed": {
               "ambient": "rain",
+              "icon": "leaf",
               "breakIntervalMultiplier": 1,
-              "emoji": "\ud83c\udf3f",
               "fontSize": 14,
               "label": "Relaxed",
               "minimap": true,
@@ -109,8 +109,8 @@
             },
             "tired": {
               "ambient": "rain",
+              "icon": "moon",
               "breakIntervalMultiplier": 0.6,
-              "emoji": "\ud83c\udf19",
               "fontSize": 16,
               "label": "Tired",
               "minimap": true,
@@ -118,7 +118,7 @@
               "zen": false
             }
           },
-          "description": "Mood profiles. Each mood maps to a theme, font size, Zen preference, minimap, ambient track (deep | rain | wind | none), and a break-interval multiplier. Add your own moods by adding keys.",
+          "description": "Mood profiles. Each mood maps to an icon (target | leaf | moon | bolt), a theme, font size, Zen preference, minimap, ambient track (deep | rain | wind | none), and a break-interval multiplier. Add your own moods by adding keys.",
           "type": "object"
         }
       },
@@ -223,6 +223,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "icon": "media/icon.png"
 }

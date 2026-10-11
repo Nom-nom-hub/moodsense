@@ -4,7 +4,9 @@ export type AmbientTrack = 'deep' | 'rain' | 'wind' | 'none';
 
 export interface MoodProfile {
   label: string;
-  emoji: string;
+  /** Icon name from the built-in icon set (see ICON_SVGS in panelState.ts):
+   *  target | leaf | moon | bolt — unknown names fall back to a plain dot. */
+  icon: string;
   theme: string;
   fontSize: number;
   zen: boolean;
@@ -18,22 +20,22 @@ export interface MoodProfile {
  *  extension still behaves if the setting is emptied. */
 export const DEFAULT_PROFILES: Record<string, MoodProfile> = {
   focused: {
-    label: 'Focused', emoji: '🎯',
+    label: 'Focused', icon: 'target',
     theme: 'Default Dark Modern', fontSize: 14,
     zen: true, minimap: false, ambient: 'deep', breakIntervalMultiplier: 1.0,
   },
   relaxed: {
-    label: 'Relaxed', emoji: '🌿',
+    label: 'Relaxed', icon: 'leaf',
     theme: 'Quiet Light', fontSize: 14,
     zen: false, minimap: true, ambient: 'rain', breakIntervalMultiplier: 1.0,
   },
   tired: {
-    label: 'Tired', emoji: '🌙',
+    label: 'Tired', icon: 'moon',
     theme: 'Default Dark Modern', fontSize: 16,
     zen: false, minimap: true, ambient: 'rain', breakIntervalMultiplier: 0.6,
   },
   energetic: {
-    label: 'Energetic', emoji: '⚡',
+    label: 'Energetic', icon: 'bolt',
     theme: 'Monokai', fontSize: 13,
     zen: false, minimap: true, ambient: 'wind', breakIntervalMultiplier: 1.2,
   },

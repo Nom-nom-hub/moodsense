@@ -21,7 +21,7 @@ describe('mood profiles', () => {
   it('uses configured profiles, including custom moods', () => {
     const custom = {
       deepwork: {
-        label: 'Deep Work', emoji: '🕳️',
+        label: 'Deep Work', icon: 'target',
         theme: 'Default Dark Modern', fontSize: 15,
         zen: true, minimap: false, ambient: 'deep', breakIntervalMultiplier: 1.5,
       },
