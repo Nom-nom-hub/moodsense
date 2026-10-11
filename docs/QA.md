@@ -86,3 +86,11 @@ list covers what only a live IDE can prove.
 - [ ] Panel closed → switch dark→light theme (or apply the Relaxed mood) →
       open the panel: its surfaces match the light theme immediately
 - [ ] Panel open during a theme change: it repaints without reopening
+
+## Polish checks (0.6.0)
+- [ ] Editor: back button returns to the list; Enter in the name field saves;
+      Esc cancels; preview changes colors when you switch theme/accent/size
+- [ ] Fresh profile (or cleared state): welcome card shows once; Try Focused applies
+- [ ] Countdown in the last minute: amber, then red + breathing near zero
+- [ ] Status bar shows an icon glyph before the mood name
+- [ ] Empty routines: hint + Settings link visible

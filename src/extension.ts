@@ -33,6 +33,8 @@ let lastSlotId: string | null = null;
 /** True while Focus Mode is engaged (it is not a mood, but the status bar
  *  must not pretend nothing is on while Zen + ambient are running). */
 let focusModeOn = false;
+/** Re-entry guard + panel busy state while a mood apply is writing config. */
+let applyInFlight = false;
 
 /** MoodSense's own configuration writes also fire onDidChangeConfiguration.
  *  This timestamp marks a short window after our writes during which config
@@ -66,6 +68,13 @@ export function activate(context: vscode.ExtensionContext): void {
       pushState(context);
     },
     runRoutine: (name) => runRoutine(context, name),
+    dismissWelcome: async () => {
+      await context.globalState.update('moodsense.welcomed', true);
+      pushState(context);
+    },
+    openRoutinesSettings: async () => {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'moodsense.routines');
+    },
     setBreaksEnabled: async (enabled) => {
       await vscode.workspace
         .getConfiguration('moodsense')
@@ -285,6 +294,11 @@ function buildState(context: vscode.ExtensionContext): PanelState {
       durationLabel: formatDuration(w.seconds),
     })),
     routines: sanitizeRoutines(cfg.get<unknown>('routines', [])).map((r) => ({ name: r.name, mood: r.mood })),
+    showWelcome:
+      !context.globalState.get<boolean>('moodsense.welcomed', false) &&
+      !currentMood &&
+      history.length === 0,
+    applying: applyInFlight,
     volume: cfg.get<number>('ambient.volume', 0.7),
     breaksEnabled: cfg.get<boolean>('breaks.enabled', true),
     nextBreakAt: breaks.nextFireAt,
@@ -465,11 +479,32 @@ async function pickMood(context: vscode.ExtensionContext): Promise<void> {
 }
 
 async function applyMood(context: vscode.ExtensionContext, moodId: string): Promise<void> {
+  if (applyInFlight) {
+    return; // rapid clicks must not queue overlapping config writes
+  }
   const profile = getProfile(moodId);
   if (!profile) {
     void vscode.window.showWarningMessage(`MoodSense: unknown mood "${moodId}". Check moodsense.profiles.`);
     return;
   }
+  applyInFlight = true;
+  if (statusBar) {
+    statusBar.text = `MoodSense: Applying ${profile.label}…`;
+  }
+  pushState(context);
+  try {
+    await applyMoodInner(context, moodId, profile);
+  } finally {
+    applyInFlight = false;
+    pushState(context);
+  }
+}
+
+async function applyMoodInner(
+  context: vscode.ExtensionContext,
+  moodId: string,
+  profile: MoodProfile,
+): Promise<void> {
   await closeSession(context);
 
   // Snapshot the user's own setup exactly once, before the first apply, so
@@ -570,6 +605,16 @@ function takeSnapshot(): SettingsSnapshot {
   };
 }
 
+/** Codicons available for the status bar (custom SVGs can't render there).
+ *  Keyed by the profile icon names from ICON_SVGS. */
+const STATUS_ICONS: Record<string, string> = {
+  target: 'target',
+  leaf: 'leaf',
+  moon: 'moon',
+  bolt: 'zap',
+  dot: 'circle-filled',
+};
+
 function updateStatusBar(moodId: string | undefined, profile?: MoodProfile): void {
   if (!statusBar) {
     return;
@@ -587,7 +632,8 @@ function updateStatusBar(moodId: string | undefined, profile?: MoodProfile): voi
     return;
   }
   const p = profile ?? getProfile(moodId);
-  statusBar.text = `MoodSense: ${p?.label ?? moodId}${focusModeOn ? ' · Focus' : ''}`;
+  const icon = p && STATUS_ICONS[p.icon] ? `$(${STATUS_ICONS[p.icon]}) ` : '';
+  statusBar.text = `${icon}MoodSense: ${p?.label ?? moodId}${focusModeOn ? ' · Focus' : ''}`;
   statusBar.tooltip = `MoodSense: ${p?.label ?? moodId}${focusModeOn ? ' + Focus Mode' : ''}. Click to change mood.`;
   // Tint the status bar with the mood's accent — state readable at a glance.
   statusBar.color = accentFor(moodId, p);

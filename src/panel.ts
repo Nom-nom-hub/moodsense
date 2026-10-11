@@ -12,6 +12,8 @@ export interface PanelActions {
   setLayer(track: AmbientTrack): void;
   runRoutine(name: string): Promise<void>;
   setBreaksEnabled(enabled: boolean): Promise<void>;
+  dismissWelcome(): Promise<void>;
+  openRoutinesSettings(): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
   deleteMood(id: string): Promise<void>;
   resetMood(id: string): Promise<void>;
@@ -196,6 +198,12 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
           await this.actions.setBreaksEnabled(msg.value === 1);
         }
         break;
+      case 'dismissWelcome':
+        await this.actions.dismissWelcome();
+        break;
+      case 'openRoutinesSettings':
+        await this.actions.openRoutinesSettings();
+        break;
       case 'saveMood':
         await this.actions.saveMood(msg.id ?? null, msg.profile);
         break;
@@ -339,6 +347,33 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   .wrow .wbar > div { height: 100%; border-radius: 99px; }
   .wrow .wtime { width: 52px; flex: none; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .empty { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .welcome {
+    position: relative; margin-top: 14px; padding: 13px 14px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+  .welcome .wtitle { font-size: 13px; font-weight: 650; margin-bottom: 4px; padding-right: 16px; }
+  .welcome .wtext { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-bottom: 10px; }
+  .welcome .wx {
+    position: absolute; top: 6px; right: 8px; appearance: none; cursor: pointer;
+    background: none; border: none; color: var(--muted); font-size: 14px; padding: 2px 4px; line-height: 1;
+  }
+  .welcome .wx:hover { color: var(--ink); }
+  .welcome .btn { flex: none; padding: 6px 14px; }
+  .rows.busy { opacity: .55; pointer-events: none; }
+  .count.warn { color: #FBBF24; }
+  .count.crit { color: #F87171; animation: breathe 1.1s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: .4; } }
+  @media (prefers-reduced-motion: reduce) { .count.crit { animation: none; } }
+  .ed-head { display: flex; align-items: center; gap: 10px; margin: 16px 0 2px; }
+  .ed-head .ed-title { margin: 0; }
+  .preview { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .pv-bar { display: flex; align-items: center; gap: 5px; padding: 6px 9px; }
+  .pv-bar .d { width: 8px; height: 8px; border-radius: 50%; opacity: .45; }
+  .pv-bar em { font-style: normal; font-size: 10.5px; margin-left: 4px; opacity: .75; }
+  .pv-bar .pv-mood { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 10.5px; }
+  .pv-bar .pv-mood .mdot { width: 7px; height: 7px; border-radius: 50%; }
+  .pv-code { font-family: var(--vscode-editor-font-family, Consolas, monospace); padding: 9px 11px; line-height: 1.55; white-space: pre; overflow: hidden; }
 
   .labelrow { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 0 8px; }
   .labelrow .label { margin: 0; }
@@ -418,6 +453,14 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   <div id="listView">
   <div class="sched hidden" id="schedLabel"></div>
+  <div class="welcome hidden" id="welcomeCard">
+    <button class="wx" id="welcomeDismiss" title="Dismiss">×</button>
+    <div class="wtitle">Your IDE, tuned to how you work</div>
+    <div class="wtext">Pick a mood and MoodSense reshapes your theme, type, sound,
+      and break rhythm around it. Your current setup is snapshotted first —
+      Off always brings it back, untouched.</div>
+    <button class="btn primary" id="welcomeTry">Try Focused</button>
+  </div>
   <div class="labelrow">
     <span class="label">Mood</span>
     <button class="mini" id="newMood">+ New mood</button>
@@ -456,17 +499,26 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   <div class="label">This week</div>
   <div id="weekRows"></div>
 
+  <div class="label">Mood packs</div>
+  <div class="actions" style="margin-top:0">
+    <button class="btn ghost" id="exportBtn">Export</button>
+    <button class="btn ghost" id="importBtn">Import</button>
+  </div>
+  <div class="hint">Export copies your moods as JSON, ready to share. Import takes a
+    pack — you are asked before anything you have gets replaced.</div>
+
   <div class="actions">
     <button class="btn primary" id="focusBtn">Focus Mode</button>
     <button class="btn ghost" id="offBtn">Off · Restore</button>
   </div>
-  <div class="foot">Local only — no telemetry, no accounts.<br/>
-    <button class="linkish" id="exportBtn">Export moods</button> · <button class="linkish" id="importBtn">Import moods</button>
-  </div>
+  <div class="foot">Local only — no telemetry, no accounts.</div>
   </div>
 
   <div id="editorView" class="hidden">
-    <div class="ed-title" id="edTitle">New mood</div>
+    <div class="ed-head">
+      <button class="mini" id="edBack">← Moods</button>
+      <div class="ed-title" id="edTitle">New mood</div>
+    </div>
     <div class="ed-sub">A mood is a whole environment: theme, type, sound, and rhythm. It saves to your settings and is yours — edit it any time.</div>
 
     <div class="field">
@@ -490,6 +542,23 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       <input type="range" id="f-fontsize" min="10" max="24" step="1" style="width: 100%;" />
     </div>
     <div class="field">
+      <span class="flabel">Preview</span>
+      <div class="preview" id="pv">
+        <div class="pv-bar" id="pv-bar">
+          <span class="d"></span><span class="d"></span><span class="d"></span>
+          <em>app.ts</em>
+          <span class="pv-mood"><span class="mdot" id="pv-dot"></span><span id="pv-name">Mood</span></span>
+        </div>
+        <div class="pv-code" id="pv-code"><span class="pv-k">const</span> mood = <span class="pv-s">'yours'</span>;
+<span class="pv-k">function</span> build() {
+  <span class="pv-k">return</span> ship(<span class="pv-s">'it'</span>);
+}</div>
+      </div>
+    </div>
+
+    <details class="adv" id="soundDetails">
+      <summary>Sound, rhythm &amp; layout</summary>
+    <div class="field">
       <span class="flabel">Ambient</span>
       <div class="seg" id="f-ambient"></div>
     </div>
@@ -506,6 +575,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       <label class="check"><input type="checkbox" id="f-zen" /> Zen mode <span class="fval">(only with layout changes enabled)</span></label>
       <label class="check"><input type="checkbox" id="f-minimap" /> Minimap visible</label>
     </div>
+    </details>
 
     <details class="adv">
       <summary>Typography &amp; cursor</summary>
@@ -687,11 +757,14 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         sched.classList.add('hidden');
       }
 
+      document.getElementById('welcomeCard').classList.toggle('hidden', !state.showWelcome);
+      document.getElementById('moodRows').classList.toggle('busy', !!state.applying);
+
       const rwrap = document.getElementById('routinesWrap');
       const rrow = document.getElementById('routinesRow');
       rrow.innerHTML = '';
+      rwrap.classList.remove('hidden');
       if (state.routines && state.routines.length > 0) {
-        rwrap.classList.remove('hidden');
         for (const r of state.routines) {
           const b = document.createElement('button');
           b.className = 'rbtn';
@@ -700,7 +773,15 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
           rrow.appendChild(b);
         }
       } else {
-        rwrap.classList.add('hidden');
+        const hint = document.createElement('span');
+        hint.className = 'empty';
+        hint.innerHTML = 'One tap: a mood, optionally in Focus Mode. ';
+        const link = document.createElement('button');
+        link.className = 'linkish';
+        link.textContent = 'Add routines in Settings';
+        link.addEventListener('click', () => vscode.postMessage({ type: 'openRoutinesSettings' }));
+        hint.appendChild(link);
+        rrow.appendChild(hint);
       }
 
       document.getElementById('quietNote').classList.toggle('hidden', !state.quietActive);
@@ -750,15 +831,23 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       const el = document.getElementById('countdown');
       const bar = document.getElementById('breakBar');
       if (!state || !state.breaksEnabled) {
-        el.textContent = 'Off'; bar.style.width = '0%'; return;
+        el.textContent = 'Off'; bar.style.width = '0%';
+        el.classList.remove('warn', 'crit');
+        return;
       }
       if (!state.nextBreakAt) {
-        el.textContent = '—'; bar.style.width = '0%'; return;
+        el.textContent = '—'; bar.style.width = '0%';
+        el.classList.remove('warn', 'crit');
+        return;
       }
       const remaining = state.nextBreakAt - Date.now();
       el.textContent = fmt(remaining);
       const total = state.breakTotalSeconds * 1000;
       bar.style.width = (total > 0 ? Math.min(100, Math.max(0, (remaining / total) * 100)) : 0) + '%';
+      // Urgency cue: a timer invites; a break prompt should insist a little.
+      el.classList.toggle('warn', remaining <= 60000 && remaining > 15000);
+      el.classList.toggle('crit', remaining <= 15000);
+      bar.style.background = remaining <= 15000 ? '#F87171' : remaining <= 60000 ? '#FBBF24' : '';
     }
     setInterval(tick, 1000);
 
@@ -791,6 +880,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       volTimer = setTimeout(() => vscode.postMessage({ type: 'volume', value: baseVolume }), 200);
     });
     document.getElementById('offBtn').addEventListener('click', () => vscode.postMessage({ type: 'off' }));
+    document.getElementById('welcomeTry').addEventListener('click', () => vscode.postMessage({ type: 'setMood', id: 'focused' }));
+    document.getElementById('welcomeDismiss').addEventListener('click', () => vscode.postMessage({ type: 'dismissWelcome' }));
     document.getElementById('focusBtn').addEventListener('click', () => vscode.postMessage({ type: 'focus' }));
     document.getElementById('resetBreak').addEventListener('click', () => vscode.postMessage({ type: 'resetBreak' }));
     document.getElementById('breaksToggle').addEventListener('click', () => {
@@ -814,10 +905,32 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       document.getElementById('editorView').classList.toggle('hidden', !show);
     }
 
+    /** Live preview: the draft mood rendered as a tiny editor — the chosen
+     *  theme's real colors, the draft accent, name, and font size. */
+    function updatePreview() {
+      const t = state && state.themes.find((x) => x.id === selTheme);
+      const sw = t && t.swatch ? t.swatch : { bg: '#1F1F1F', fg: '#CCCCCC', accent: '#007ACC' };
+      const pv = document.getElementById('pv');
+      const bar = document.getElementById('pv-bar');
+      const code = document.getElementById('pv-code');
+      pv.style.borderColor = selAccent;
+      bar.style.background = sw.accent;
+      bar.style.color = sw.fg;
+      code.style.background = sw.bg;
+      code.style.color = sw.fg;
+      code.style.fontSize = Math.min(18, parseInt(document.getElementById('f-fontsize').value, 10) || 14) + 'px';
+      code.querySelectorAll('.pv-k').forEach((el) => { el.style.color = sw.accent; });
+      code.querySelectorAll('.pv-s').forEach((el) => { el.style.color = sw.accent; el.style.opacity = '0.75'; });
+      document.getElementById('pv-dot').style.background = selAccent;
+      document.getElementById('pv-name').textContent =
+        document.getElementById('f-name').value.trim() || 'Mood';
+    }
+
     function openEditor(id) {
       if (!state) return;
       editingId = id;
       const p = id ? state.profiles[id] : null;
+      document.getElementById('soundDetails').open = !!p;
       document.getElementById('edTitle').textContent = p ? 'Edit mood' : 'New mood';
       document.getElementById('f-name').value = p ? p.label : '';
       selIcon = p ? p.icon : 'target';
@@ -851,6 +964,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
           selAccent = hex;
           swBox.querySelectorAll('.sw').forEach((el) => el.classList.remove('sel'));
           s.classList.add('sel');
+          updatePreview();
         });
         swBox.appendChild(s);
       }
@@ -861,6 +975,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       color.addEventListener('input', () => {
         selAccent = color.value;
         swBox.querySelectorAll('.sw').forEach((el) => el.classList.remove('sel'));
+        updatePreview();
       });
       swBox.appendChild(color);
 
@@ -888,6 +1003,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
           selTheme = t.id;
           themeList.querySelectorAll('.trow').forEach((el) => el.classList.remove('sel'));
           row.classList.add('sel');
+          updatePreview();
         });
         themeList.appendChild(row);
       }
@@ -940,6 +1056,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       const isBuiltin = id ? state.builtinIds.includes(id) : false;
       document.getElementById('f-delete').classList.toggle('hidden', !(id && !isBuiltin));
       document.getElementById('f-reset').classList.toggle('hidden', !isBuiltin);
+      updatePreview();
       showEditor(true);
     }
 
@@ -948,6 +1065,17 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
     document.getElementById('f-fontsize').addEventListener('input', (e) => {
       document.getElementById('f-fontsize-val').textContent = e.target.value + 'px';
+      updatePreview();
+    });
+    document.getElementById('f-name').addEventListener('input', updatePreview);
+    document.getElementById('edBack').addEventListener('click', () => showEditor(false));
+    document.getElementById('editorView').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        showEditor(false);
+      } else if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+        e.preventDefault();
+        document.getElementById('f-save').click();
+      }
     });
     document.getElementById('f-breaks').addEventListener('input', (e) => {
       document.getElementById('f-breaks-val').textContent = breaksLabel(parseFloat(e.target.value));

@@ -62,7 +62,7 @@ describe('extension flows', () => {
     expect(__getConfig('workbench.colorTheme')).toBe('Default Dark Modern');
     expect(__getConfig('editor.fontSize')).toBe(14);
     expect(ctx.__state.get('moodsense.currentMood')).toBe('focused');
-    expect(__lastStatusBar?.text).toBe('MoodSense: Focused');
+    expect(__lastStatusBar?.text).toBe('$(target) MoodSense: Focused');
     expect(__lastStatusBar?.color).toBe('#7C8CF8');
   });
 
@@ -92,7 +92,7 @@ describe('extension flows', () => {
     await run('moodsense.focusMode');
     expect(__lastStatusBar?.text).toBe('MoodSense: Focus Mode');
     await run('moodsense.setRelaxed');
-    expect(__lastStatusBar?.text).toBe('MoodSense: Relaxed');
+    expect(__lastStatusBar?.text).toBe('$(leaf) MoodSense: Relaxed');
   });
 
   it('custom moods from settings join the cycle after the built-ins', async () => {

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.0 — 2026-10-11
+
+Panel polish pass:
+
+- **Live preview in the editor** — a miniature editor renders the draft
+  mood as you build it: the chosen theme's real colors, your accent,
+  name, and font size, updating on every change
+- **Editor breathing room** — identity first (name, icon, accent, theme,
+  preview); sound, rhythm and layout fold into a collapsible section
+  (auto-open when editing an existing mood). A "← Moods" back button sits
+  next to the title, Enter saves from any field, Esc cancels
+- **Welcome card** — first-run only, inside the panel: what MoodSense does
+  and a one-tap Try Focused; dismissible, never returns
+- **Mood packs promoted** — Export/Import are now a proper section with
+  buttons, not 10px footer links
+- **Countdown urgency** — under a minute the timer turns amber; under 15
+  seconds it turns red and breathes (reduced-motion respected)
+- **Apply feedback** — the status bar shows "Applying…" during a mood
+  apply, panel rows disable, and rapid clicks can't queue overlapping
+  writes
+- **Status bar icon** — the current mood's icon (codicon) sits next to
+  its label, readable at a glance
+- **Routines empty state** — the section explains itself and links
+  straight to the setting instead of hiding
+
+
 ## 0.5.2 — 2026-10-11
 
 - **Panel follows theme changes.** The retained panel webview could come
