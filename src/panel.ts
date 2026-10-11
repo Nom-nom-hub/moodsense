@@ -15,7 +15,7 @@ export interface PanelActions {
   dismissWelcome(): Promise<void>;
   openRoutinesSettings(): Promise<void>;
   setTypingClicks(enabled: boolean): Promise<void>;
-  addYouTube(url: string): Promise<void>;
+  addYouTube(url: string): Promise<{ ok: boolean; reason?: string }>;
   removeYouTube(token: string): Promise<void>;
   pickAudioFolder(): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
@@ -238,7 +238,10 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         break;
       case 'addYouTube':
         if (msg.text) {
-          await this.actions.addYouTube(msg.text);
+          const result = await this.actions.addYouTube(msg.text);
+          if (this.view) {
+            void this.view.webview.postMessage({ type: 'youtubeResult', ok: result.ok, reason: result.reason });
+          }
         }
         break;
       case 'removeYouTube':
@@ -542,6 +545,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     <input type="text" id="ytInput" placeholder="Paste a YouTube link…" />
     <button class="mini" id="ytAdd">Add</button>
   </div>
+  <div class="hint hidden" id="ytError" style="color: #F87171;"></div>
   <div id="ytWrap" class="hidden">
     <div id="ytPlayer"></div>
     <div class="hint">YouTube's own embedded player. If it starts silent, press play on the video once.</div>
@@ -1254,9 +1258,13 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     document.getElementById('pickFolder').addEventListener('click', () => vscode.postMessage({ type: 'pickFolder' }));
     document.getElementById('ytAdd').addEventListener('click', () => {
       const input = document.getElementById('ytInput');
+      const err = document.getElementById('ytError');
       if (input.value.trim()) {
+        // Do NOT clear yet: the host confirms first. Silent disappearance
+        // with no chip and no reason was indistinguishable from a bug.
+        err.textContent = 'Adding…';
+        err.classList.remove('hidden');
         vscode.postMessage({ type: 'addYouTube', text: input.value.trim() });
-        input.value = '';
       }
     });
     document.getElementById('ytInput').addEventListener('keydown', (e) => {
@@ -1565,6 +1573,16 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         setYouTube(msg.id, msg.volume);
       } else if (msg.type === 'youtubeStop') {
         stopYouTube();
+      } else if (msg.type === 'youtubeResult') {
+        const err = document.getElementById('ytError');
+        if (msg.ok) {
+          document.getElementById('ytInput').value = '';
+          err.textContent = '';
+          err.classList.add('hidden');
+        } else {
+          err.textContent = msg.reason || 'Could not add that link.';
+          err.classList.remove('hidden');
+        }
       }
     });
     vscode.postMessage({ type: 'ready' });

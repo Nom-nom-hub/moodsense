@@ -28,6 +28,11 @@ export function parseYouTubeId(input: unknown): string | null {
   if (YT_ID.test(s)) {
     return s;
   }
+  // Share sheets and copied messages wrap the link in words — find it.
+  const embedded = s.match(/https?:\/\/[^\s]+|(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/[^\s]+/);
+  if (embedded && embedded[0] !== s) {
+    return parseYouTubeId(embedded[0]);
+  }
   let url: URL;
   try {
     url = new URL(s.includes('://') ? s : `https://${s}`);

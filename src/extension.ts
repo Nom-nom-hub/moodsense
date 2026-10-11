@@ -92,17 +92,27 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     addYouTube: async (url) => {
       const id = parseYouTubeId(url);
-      const cfg = vscode.workspace.getConfiguration('moodsense');
       if (!id) {
-        void vscode.window.showWarningMessage('MoodSense: that does not look like a YouTube video link.');
-        return;
+        return {
+          ok: false,
+          reason: 'That link has no single video in it — paste the address of one specific video.',
+        };
       }
-      const ids = sanitizeYouTubeIds(cfg.get<unknown>('ambient.youtubeUrls', []));
-      if (!ids.includes(id)) {
-        ids.push(id);
-        await cfg.update('ambient.youtubeUrls', ids, vscode.ConfigurationTarget.Global);
+      try {
+        const cfg = vscode.workspace.getConfiguration('moodsense');
+        const ids = sanitizeYouTubeIds(cfg.get<unknown>('ambient.youtubeUrls', []));
+        if (!ids.includes(id)) {
+          ids.push(id);
+          await cfg.update('ambient.youtubeUrls', ids, vscode.ConfigurationTarget.Global);
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          reason: `Could not save it to your settings (${err instanceof Error ? err.message : String(err)}).`,
+        };
       }
       pushState(context);
+      return { ok: true };
     },
     removeYouTube: async (token) => {
       const cfg = vscode.workspace.getConfiguration('moodsense');

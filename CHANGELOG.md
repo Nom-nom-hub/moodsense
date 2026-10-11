@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.1 — 2026-10-11
+
+- **YouTube Add no longer fails silently.** The input used to clear
+  before the host confirmed, so a rejected link looked exactly like a
+  bug: text gone, no chip, no reason. Now the host answers every add —
+  success clears the box, failure explains itself inline (and pastes
+  that wrap the link in share-sheet text now parse: the video link is
+  found inside surrounding words)
+
+
 ## 0.9.0 — 2026-10-11
 
 Your music, without the homework:

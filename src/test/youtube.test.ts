@@ -10,6 +10,10 @@ describe('parseYouTubeId', () => {
     expect(parseYouTubeId('youtube.com/watch?v=dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
     expect(parseYouTubeId('dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
   });
+  it('finds a link buried in share-sheet text', () => {
+    expect(parseYouTubeId('lofi hip hop radio 📚 beats to relax/study to https://youtu.be/jfKfPfyJRdk via @YouTube')).toBe('jfKfPfyJRdk');
+    expect(parseYouTubeId('watch this: youtube.com/watch?v=dQw4w9WgXcQ now')).toBe('dQw4w9WgXcQ');
+  });
   it('rejects non-YouTube and malformed input', () => {
     expect(parseYouTubeId('https://vimeo.com/12345678901')).toBeNull();
     expect(parseYouTubeId('https://www.youtube.com/watch?v=short')).toBeNull();
