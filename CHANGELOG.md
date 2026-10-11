@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.2 — 2026-10-11
+
+- **Panel follows theme changes.** The retained panel webview could come
+  back wearing the previous theme's colors when the theme changed while
+  it was hidden (everything else repainted; the panel didn't). Now the
+  extension watches theme changes: a visible panel repaints and
+  re-renders immediately, and if the theme kind flipped (dark ↔ light)
+  while the panel was closed, its document is rebuilt on open so it
+  always matches the editor around it.
+
+
 ## 0.5.1 — 2026-10-11
 
 Review fixes, round two (verified against the tree first — three of the

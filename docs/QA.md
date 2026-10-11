@@ -81,3 +81,8 @@ list covers what only a live IDE can prove.
 - [ ] Editor theme list shows color dots matching each theme's real palette
 - [ ] Panel Break section: Turn off silences reminders (countdown shows Off),
       Turn on resumes; Ctrl+Alt+P opens the panel
+
+## Theme sync check (0.5.2)
+- [ ] Panel closed → switch dark→light theme (or apply the Relaxed mood) →
+      open the panel: its surfaces match the light theme immediately
+- [ ] Panel open during a theme change: it repaints without reopening

@@ -46,6 +46,10 @@ export const workspace = {
 };
 
 export const window = {
+  activeColorTheme: { kind: 2 },
+  onDidChangeActiveColorTheme() {
+    return { dispose(): void { /* no-op */ } };
+  },
   createStatusBarItem() {
     const item: Record<string, unknown> = {
       show(): void { /* no-op */ },

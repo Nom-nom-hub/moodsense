@@ -52,6 +52,11 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   private view: vscode.WebviewView | undefined;
   private state: PanelState | null = null;
   private rootsKey = '';
+  /** Theme kind at last resolve; if the kind flips (dark/light) while the
+   *  panel is hidden, the retained webview can return wearing stale theme
+   *  colors — in that case the document is rebuilt on reveal. */
+  private lastThemeKind: vscode.ColorThemeKind | undefined;
+  private staleByTheme = false;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -61,6 +66,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
+    this.lastThemeKind = vscode.window.activeColorTheme.kind;
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: this.audio.roots(),
@@ -72,10 +78,33 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     });
     view.onDidChangeVisibility(() => {
       if (view.visible) {
+        if (this.staleByTheme) {
+          // Theme kind changed while hidden: rebuild the document so it
+          // picks up the new theme's variables, then re-push state (the
+          // fresh document asks for it via its ready message).
+          this.staleByTheme = false;
+          view.webview.html = this.html(view.webview);
+          return;
+        }
         this.push();
       }
     });
     this.push();
+  }
+
+  /** Called when VS Code's active color theme changes. Visible panel: ask
+   *  the document to repaint and re-render. Hidden panel: remember whether
+   *  the theme kind flipped, so the reveal can rebuild if needed. */
+  notifyThemeChanged(kind: vscode.ColorThemeKind): void {
+    if (!this.view) {
+      return;
+    }
+    if (this.view.visible) {
+      void this.view.webview.postMessage({ type: 'theme' });
+    } else if (this.lastThemeKind !== undefined && kind !== this.lastThemeKind) {
+      this.staleByTheme = true;
+    }
+    this.lastThemeKind = kind;
   }
 
   /** Push fresh state (and retarget the audio) — call after anything changes. */
@@ -959,7 +988,15 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     window.addEventListener('message', (event) => {
       const msg = event.data;
-      if (msg.type === 'state') {
+      if (msg.type === 'theme') {
+        // Theme changed while visible: force a style recalculation (some
+        // builds cache color-mix results against the old variables), then
+        // re-render so every dynamic surface recomputes.
+        document.body.style.display = 'none';
+        void document.body.offsetHeight;
+        document.body.style.display = '';
+        render();
+      } else if (msg.type === 'state') {
         state = msg.state;
         render();
       } else if (msg.type === 'audio') {

@@ -91,6 +91,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(MoodPanelProvider.viewType, panel, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
+    vscode.window.onDidChangeActiveColorTheme((e) => {
+      panel.notifyThemeChanged(e.kind);
+    }),
     vscode.commands.registerCommand('moodsense.pickMood', () => pickMood(context)),
     vscode.commands.registerCommand('moodsense.setFocused', () => applyMood(context, 'focused')),
     vscode.commands.registerCommand('moodsense.setRelaxed', () => applyMood(context, 'relaxed')),
