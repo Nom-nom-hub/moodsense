@@ -364,6 +364,7 @@ async function saveMood(
     void vscode.window.showWarningMessage('MoodSense: that mood could not be saved (invalid data).');
     return;
   }
+  const wasNew = id === null;
   const profiles = { ...getProfiles() };
   let moodId = id;
   if (!moodId) {
@@ -377,7 +378,16 @@ async function saveMood(
   profiles[moodId] = profile;
   await persistProfiles(profiles);
   pushState(context);
-  void vscode.window.showInformationMessage(`MoodSense: "${profile.label}" saved.`);
+  // Saving is making: a brand-new mood applies immediately so you see what
+  // you built, and edits to the mood you're wearing re-apply live. Editing
+  // any other mood just saves it — never yank the current environment.
+  const current = context.globalState.get<string>(STATE_MOOD);
+  if (wasNew || current === moodId) {
+    await applyMood(context, moodId);
+    void vscode.window.showInformationMessage(`MoodSense: "${profile.label}" saved and applied.`);
+  } else {
+    void vscode.window.showInformationMessage(`MoodSense: "${profile.label}" saved.`);
+  }
 }
 
 async function deleteMood(context: vscode.ExtensionContext, id: string): Promise<void> {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-10-11
+
+- **Save = see it:** creating a mood now applies it the moment you save, and
+  editing the mood you're currently wearing re-applies live — no extra click
+  to preview your own changes. Editing any other mood still just saves it.
+
+
 ## 0.3.0 — 2026-10-11
 
 The ownership release — MoodSense is now yours to shape:
