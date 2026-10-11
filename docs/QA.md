@@ -116,3 +116,9 @@ list covers what only a live IDE can prove.
       play/pause button and volume slider drive the video
 - [ ] Assign the video to a mood in the editor; switch moods → player swaps/stops
 - [ ] Remove a library entry with ×; a bad link shows a clean warning
+
+## Radio checks (0.10.0)
+- [ ] Radio chips play live (Groove Salad first); volume + pause drive them;
+      assign Drone Zone to a mood and switch to it
+- [ ] Paste a stream URL: chip appears with a readable label; bad URL explains itself
+- [ ] Equalizer still dances on Deep/Rain; hides quietly on radio

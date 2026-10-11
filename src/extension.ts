@@ -10,6 +10,7 @@ import { appendSession, formatDuration, summarizeWeek, type MoodSession } from '
 import { fallbackSwatch, parseThemePalette, type ThemeSwatch } from './themePalette.js';
 import { isTypingEvent, KeyRateTracker } from './keyrate.js';
 import { parseYouTubeId, sanitizeYouTubeIds } from './youtube.js';
+import { RADIO_STATIONS, parseStreamUrl, sanitizeStreamUrls, streamLabel } from './radio.js';
 import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
 
@@ -122,8 +123,39 @@ export function activate(context: vscode.ExtensionContext): void {
       await cfg.update('ambient.youtubeUrls', ids, vscode.ConfigurationTarget.Global);
       pushState(context);
     },
-    pickAudioFolder: async () => {
-      const picked = await vscode.window.showOpenDialog({
+    addStream: async (url) => {
+      const parsed = parseStreamUrl(url);
+      if (!parsed) {
+        return {
+          ok: false,
+          reason: 'That is not a stream URL — it must be a direct https:// audio stream link.',
+        };
+      }
+      try {
+        const cfg = vscode.workspace.getConfiguration('moodsense');
+        const urls = sanitizeStreamUrls(cfg.get<unknown>('ambient.streamUrls', []));
+        if (!urls.includes(parsed)) {
+          urls.push(parsed);
+          await cfg.update('ambient.streamUrls', urls, vscode.ConfigurationTarget.Global);
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          reason: `Could not save it to your settings (${err instanceof Error ? err.message : String(err)}).`,
+        };
+      }
+      pushState(context);
+      return { ok: true };
+    },
+    removeStream: async (token) => {
+      const cfg = vscode.workspace.getConfiguration('moodsense');
+      const urls = sanitizeStreamUrls(cfg.get<unknown>('ambient.streamUrls', [])).filter(
+        (u) => `stream:${u}` !== token,
+      );
+      await cfg.update('ambient.streamUrls', urls, vscode.ConfigurationTarget.Global);
+      pushState(context);
+    },
+    pickAudioFolder: async () => {      const picked = await vscode.window.showOpenDialog({
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
@@ -396,6 +428,11 @@ function buildState(context: vscode.ExtensionContext): PanelState {
     youtubeTracks: sanitizeYouTubeIds(cfg.get<unknown>('ambient.youtubeUrls', [])).map((id) => ({
       token: `yt:${id}`,
       id,
+    })),
+    radioStations: RADIO_STATIONS.map((s) => ({ token: `radio:${s.id}`, label: s.label })),
+    streamTracks: sanitizeStreamUrls(cfg.get<unknown>('ambient.streamUrls', [])).map((url) => ({
+      token: `stream:${url}`,
+      label: streamLabel(url),
     })),
     volume: cfg.get<number>('ambient.volume', 0.7),
     breaksEnabled: cfg.get<boolean>('breaks.enabled', true),

@@ -66,6 +66,10 @@ MoodSense is built to be owned, not just used:
   *YouTube:* paste a video link in the panel and it joins your library,
   streaming through YouTube's official embedded mini-player; moods can
   own a video as their soundscape just like a file.
+  *Radio:* six built-in live stations (SomaFM's Groove Salad and Drone
+  Zone, Deep Space One, Lush, Nightride FM, Radio Paradise) stream
+  directly — no embeds, no accounts, nobody who can disable playback —
+  plus any direct stream URL you paste in.
 - **Break reminders** — a plain, honest timer (default 50 min) with Snooze /
   Dismiss / Turn off. The Tired mood shortens the interval automatically.
 

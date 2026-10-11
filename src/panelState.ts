@@ -35,6 +35,10 @@ export interface PanelState {
   typingClicks: boolean;
   /** The user's YouTube library (video ids), as playable track tokens. */
   youtubeTracks: { token: string; id: string }[];
+  /** Built-in internet-radio stations (direct streams). */
+  radioStations: { token: string; label: string }[];
+  /** The user's own added stream URLs. */
+  streamTracks: { token: string; label: string }[];
   volume: number;
   breaksEnabled: boolean;
   /** Epoch ms when the next break fires, or null when no timer is running. */

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { AmbientTrack } from './moods.js';
 import { ICON_SVGS, type PanelState } from './panelState.js';
+import { radioStationById } from './radio.js';
 
 export interface PanelActions {
   setMood(id: string): Promise<void>;
@@ -18,6 +19,8 @@ export interface PanelActions {
   addYouTube(url: string): Promise<{ ok: boolean; reason?: string }>;
   removeYouTube(token: string): Promise<void>;
   pickAudioFolder(): Promise<void>;
+  addStream(url: string): Promise<{ ok: boolean; reason?: string }>;
+  removeStream(token: string): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
   deleteMood(id: string): Promise<void>;
   resetMood(id: string): Promise<void>;
@@ -161,6 +164,20 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
       return;
     }
+    // Radio + user streams are direct URLs — no webview URI resolution.
+    const directUrl =
+      typeof track === 'string' && track.startsWith('radio:')
+        ? radioStationById(track.slice(6))?.url
+        : typeof track === 'string' && track.startsWith('stream:')
+          ? track.slice(7)
+          : undefined;
+    if (directUrl !== undefined) {
+      if (slot === 'primary') {
+        void this.view.webview.postMessage({ type: 'youtubeStop' });
+      }
+      void this.view.webview.postMessage({ type: 'audio', slot, src: directUrl, volume, track });
+      return;
+    }
     const uri = this.audio.uriFor(track);
     if (!uri) {
       if (slot === 'primary') {
@@ -252,6 +269,19 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'pickFolder':
         await this.actions.pickAudioFolder();
         break;
+      case 'addStream':
+        if (msg.text) {
+          const result = await this.actions.addStream(msg.text);
+          if (this.view) {
+            void this.view.webview.postMessage({ type: 'streamResult', ok: result.ok, reason: result.reason });
+          }
+        }
+        break;
+      case 'removeStream':
+        if (msg.id) {
+          await this.actions.removeStream(msg.id);
+        }
+        break;
       case 'saveMood':
         await this.actions.saveMood(msg.id ?? null, msg.profile);
         break;
@@ -284,7 +314,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource}; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; frame-src https://www.youtube-nocookie.com;" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource} https:; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; frame-src https://www.youtube-nocookie.com;" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MoodSense</title>
 <style>
@@ -551,6 +581,14 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div class="hint hidden" id="ytPlayerNote" style="color: #FBBF24;"></div>
     <div class="hint">YouTube's own embedded player. If it starts silent, press play on the video once.</div>
   </div>
+
+  <div class="hint" style="margin: 12px 0 6px;">Radio · live streams, no gatekeepers</div>
+  <div class="seg wrap" id="radioSeg"></div>
+  <div class="ytadd">
+    <input type="text" id="streamInput" placeholder="Paste a stream URL (https://…mp3)…" />
+    <button class="mini" id="streamAdd">Add</button>
+  </div>
+  <div class="hint hidden" id="streamNote" style="color: #F87171;"></div>
   <div class="hint" style="margin: 10px 0 6px;">Layer · a second sound underneath</div>
   <div class="seg wrap" id="layerSeg"></div>
   <div class="transport">
@@ -825,6 +863,15 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         canvas.classList.add('hidden');
         return;
       }
+      // Live streams: don't pull a second copy for analysis (and most send
+      // no CORS headers, so analysis would read dead air anyway). The
+      // equalizer sits streams out, quietly. (Local tracks arrive as
+      // vscode-resource URLs — those still get mirrored.)
+      if ((primary.dataset.src.startsWith('https://') || primary.dataset.src.startsWith('http://')) && !primary.dataset.src.includes('vscode-resource')) {
+        if (mirror) mirror.pause();
+        canvas.classList.add('hidden');
+        return;
+      }
       ensureGraph();
       if (!actx || !mirror) {
         canvas.classList.add('hidden');
@@ -1058,6 +1105,11 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     function trackLabel(token) {
       if (token === 'none') return 'Silent';
       if (token.startsWith('yt:')) return 'YouTube';
+      if (token.startsWith('radio:') || token.startsWith('stream:')) {
+        const all = [...(state ? state.radioStations || [] : []), ...(state ? state.streamTracks || [] : [])];
+        const found = all.find((t) => t.token === token);
+        return found ? found.label : 'Radio';
+      }
       if (token.startsWith('file:')) {
         const found = state && state.customTracks.find((t) => t.token === token);
         return found ? found.label : token.slice(5);
@@ -1152,6 +1204,24 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         link.addEventListener('click', () => vscode.postMessage({ type: 'openRoutinesSettings' }));
         hint.appendChild(link);
         rrow.appendChild(hint);
+      }
+
+      const rseg = document.getElementById('radioSeg');
+      rseg.innerHTML = '';
+      for (const t of [...(state.radioStations || []), ...(state.streamTracks || [])]) {
+        const b = document.createElement('button');
+        b.className = state.ambientTrack === t.token ? 'active' : '';
+        b.textContent = t.label;
+        b.addEventListener('click', () => vscode.postMessage({ type: 'track', track: t.token }));
+        rseg.appendChild(b);
+        if (t.token.startsWith('stream:')) {
+          const rm = document.createElement('button');
+          rm.className = 'rm';
+          rm.textContent = '×';
+          rm.title = 'Remove this stream';
+          rm.addEventListener('click', () => vscode.postMessage({ type: 'removeStream', id: t.token }));
+          rseg.appendChild(rm);
+        }
       }
 
       document.getElementById('quietNote').classList.toggle('hidden', !state.quietActive);
@@ -1316,6 +1386,19 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     document.getElementById('ytInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') document.getElementById('ytAdd').click();
     });
+    document.getElementById('streamAdd').addEventListener('click', () => {
+      const input = document.getElementById('streamInput');
+      const note = document.getElementById('streamNote');
+      if (input.value.trim()) {
+        note.textContent = 'Adding…';
+        note.style.color = 'var(--muted)';
+        note.classList.remove('hidden');
+        vscode.postMessage({ type: 'addStream', text: input.value.trim() });
+      }
+    });
+    document.getElementById('streamInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('streamAdd').click();
+    });
     document.getElementById('offBtn').addEventListener('click', () => vscode.postMessage({ type: 'off' }));
     document.getElementById('welcomeTry').addEventListener('click', () => vscode.postMessage({ type: 'setMood', id: 'focused' }));
     document.getElementById('welcomeDismiss').addEventListener('click', () => vscode.postMessage({ type: 'dismissWelcome' }));
@@ -1455,7 +1538,9 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       const amb = document.getElementById('f-ambient');
       amb.innerHTML = '';
       const ambChoices = [...TRACKS, ...(state.customTracks || []).map((t) => [t.token, t.label]),
-        ...(state.youtubeTracks || []).map((t) => [t.token, 'YouTube'])];
+        ...(state.youtubeTracks || []).map((t) => [t.token, 'YouTube']),
+        ...(state.radioStations || []).map((t) => [t.token, t.label]),
+        ...(state.streamTracks || []).map((t) => [t.token, t.label])];
       for (const [track, label] of ambChoices) {
         const b = document.createElement('button');
         b.className = selAmbient === track ? 'active' : '';
@@ -1628,6 +1713,17 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         } else {
           err.textContent = msg.reason || 'Could not add that link.';
           err.classList.remove('hidden');
+        }
+      } else if (msg.type === 'streamResult') {
+        const note = document.getElementById('streamNote');
+        if (msg.ok) {
+          document.getElementById('streamInput').value = '';
+          note.textContent = '';
+          note.classList.add('hidden');
+        } else {
+          note.textContent = msg.reason || 'Could not add that stream.';
+          note.style.color = '#F87171';
+          note.classList.remove('hidden');
         }
       }
     });

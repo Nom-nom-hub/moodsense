@@ -261,6 +261,15 @@
           "default": [],
           "order": 24,
           "description": "Your YouTube music library: video URLs or ids, added from the panel. Stored as video ids; played through YouTube's embedded player in the panel."
+        },
+        "moodsense.ambient.streamUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "order": 25,
+          "description": "Your own internet-radio stream URLs (direct https audio streams), added from the panel."
         }
       },
       "title": "MoodSense"
@@ -376,6 +385,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.9.3",
+  "version": "0.10.0",
   "icon": "media/icon.png"
 }

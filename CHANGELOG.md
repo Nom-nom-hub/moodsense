@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0 — 2026-10-11
+
+A music source with no gatekeeper:
+
+- **Radio** — six built-in live stations stream straight into the panel
+  as first-class soundscapes (assignable to moods like any track):
+  SomaFM's Groove Salad, Drone Zone, Deep Space One, and Lush,
+  Nightride FM, and Radio Paradise. Direct audio streams — no embeds,
+  no owners disabling playback, no accounts
+- **Your own streams** — paste any direct https stream URL and it joins
+  your library next to the built-ins, with the same confirm-or-explain
+  inline add flow as YouTube
+- The equalizer politely sits streams out (no second pull of a live
+  stream; most send no analysis headers) and keeps dancing for local
+  tracks
+
+
 ## 0.9.3 — 2026-10-11
 
 - **YouTube player errors, translated.** The panel now listens to the

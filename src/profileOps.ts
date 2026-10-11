@@ -1,5 +1,6 @@
 import type { AmbientTrack, ClickProfile, CursorStyle, MoodProfile } from './moods.js';
 import { isYouTubeToken } from './youtube.js';
+import { isRadioToken, isStreamToken } from './radio.js';
 
 /** Pure validation/sanitization for mood profiles — used by the panel's
  *  mood editor on save and by mood-pack import. Anything a user types,
@@ -25,7 +26,7 @@ function isAmbientTrack(x: unknown): x is AmbientTrack {
   if ((AMBIENT_TRACKS as string[]).includes(x)) {
     return true;
   }
-  return /^file:[^/\\]+$/.test(x) || isYouTubeToken(x);
+  return /^file:[^/\\]+$/.test(x) || isYouTubeToken(x) || isRadioToken(x) || isStreamToken(x);
 }
 const CURSOR_STYLES: CursorStyle[] = ['line', 'block', 'underline', 'line-thin', 'block-outline', 'underline-thin'];
 const HEX = /^#[0-9A-Fa-f]{6}$/;
