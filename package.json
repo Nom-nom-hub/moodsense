@@ -49,6 +49,18 @@
       {
         "command": "moodsense.resetBreakTimer",
         "title": "MoodSense: Reset Break Timer"
+      },
+      {
+        "command": "moodsense.exportMoods",
+        "title": "MoodSense: Export Moods (JSON to Clipboard)"
+      },
+      {
+        "command": "moodsense.importMoods",
+        "title": "MoodSense: Import Moods (Paste JSON)"
+      },
+      {
+        "command": "moodsense.resetMoods",
+        "title": "MoodSense: Reset Moods to Defaults"
       }
     ],
     "configuration": {
@@ -80,6 +92,7 @@
             "energetic": {
               "ambient": "wind",
               "icon": "bolt",
+              "accent": "#FBBF24",
               "breakIntervalMultiplier": 1.2,
               "fontSize": 13,
               "label": "Energetic",
@@ -90,6 +103,7 @@
             "focused": {
               "ambient": "deep",
               "icon": "target",
+              "accent": "#7C8CF8",
               "breakIntervalMultiplier": 1,
               "fontSize": 14,
               "label": "Focused",
@@ -100,6 +114,7 @@
             "relaxed": {
               "ambient": "rain",
               "icon": "leaf",
+              "accent": "#4ADE80",
               "breakIntervalMultiplier": 1,
               "fontSize": 14,
               "label": "Relaxed",
@@ -110,6 +125,7 @@
             "tired": {
               "ambient": "rain",
               "icon": "moon",
+              "accent": "#A78BFA",
               "breakIntervalMultiplier": 0.6,
               "fontSize": 16,
               "label": "Tired",
@@ -118,7 +134,7 @@
               "zen": false
             }
           },
-          "description": "Mood profiles. Each mood maps to an icon (target | leaf | moon | bolt), a theme, font size, Zen preference, minimap, ambient track (deep | rain | wind | none), and a break-interval multiplier. Add your own moods by adding keys.",
+          "description": "Mood profiles. Each mood maps to an icon (target | leaf | moon | bolt), an accent color, a theme, font size, and optional font family, line height, and cursor style \u2014 plus Zen preference, minimap, ambient track (deep | rain | wind | none), and a break-interval multiplier. Edit them visually in the MoodSense panel, or add your own moods by adding keys here.",
           "type": "object"
         }
       },
@@ -223,6 +239,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.2.1",
+  "version": "0.3.0",
   "icon": "media/icon.png"
 }

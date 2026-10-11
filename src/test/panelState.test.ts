@@ -16,6 +16,11 @@ describe('panel state helpers', () => {
     expect(accentFor('custom-mood')).toBe(IDLE_ACCENT);
   });
 
+  it('a profile accent wins over the built-in hue (user ownership)', () => {
+    expect(accentFor('focused', { ...DEFAULT_PROFILES.focused, accent: '#FF0000' })).toBe('#FF0000');
+    expect(accentFor('my-mood', { ...DEFAULT_PROFILES.focused, accent: '#00FF00' })).toBe('#00FF00');
+  });
+
   it('formats the break countdown', () => {
     expect(formatCountdown(0)).toBe('now');
     expect(formatCountdown(-5)).toBe('now');

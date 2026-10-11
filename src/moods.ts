@@ -2,13 +2,24 @@ import * as vscode from 'vscode';
 
 export type AmbientTrack = 'deep' | 'rain' | 'wind' | 'none';
 
+export type CursorStyle = 'line' | 'block' | 'underline' | 'line-thin' | 'block-outline' | 'underline-thin';
+
 export interface MoodProfile {
   label: string;
   /** Icon name from the built-in icon set (see ICON_SVGS in panelState.ts):
    *  target | leaf | moon | bolt — unknown names fall back to a plain dot. */
   icon: string;
+  /** Signature color (hex) for this mood in the panel. Falls back to the
+   *  built-in per-mood hue when unset. */
+  accent?: string;
   theme: string;
   fontSize: number;
+  /** Optional per-mood editor font. Unset = your own default stays. */
+  fontFamily?: string;
+  /** Optional per-mood editor line height. Unset = your own default stays. */
+  lineHeight?: number;
+  /** Optional per-mood cursor style. Unset = your own default stays. */
+  cursorStyle?: CursorStyle;
   zen: boolean;
   minimap: boolean;
   ambient: AmbientTrack;
@@ -20,22 +31,22 @@ export interface MoodProfile {
  *  extension still behaves if the setting is emptied. */
 export const DEFAULT_PROFILES: Record<string, MoodProfile> = {
   focused: {
-    label: 'Focused', icon: 'target',
+    label: 'Focused', icon: 'target', accent: '#7C8CF8',
     theme: 'Default Dark Modern', fontSize: 14,
     zen: true, minimap: false, ambient: 'deep', breakIntervalMultiplier: 1.0,
   },
   relaxed: {
-    label: 'Relaxed', icon: 'leaf',
+    label: 'Relaxed', icon: 'leaf', accent: '#4ADE80',
     theme: 'Quiet Light', fontSize: 14,
     zen: false, minimap: true, ambient: 'rain', breakIntervalMultiplier: 1.0,
   },
   tired: {
-    label: 'Tired', icon: 'moon',
+    label: 'Tired', icon: 'moon', accent: '#A78BFA',
     theme: 'Default Dark Modern', fontSize: 16,
     zen: false, minimap: true, ambient: 'rain', breakIntervalMultiplier: 0.6,
   },
   energetic: {
-    label: 'Energetic', icon: 'bolt',
+    label: 'Energetic', icon: 'bolt', accent: '#FBBF24',
     theme: 'Monokai', fontSize: 13,
     zen: false, minimap: true, ambient: 'wind', breakIntervalMultiplier: 1.2,
   },

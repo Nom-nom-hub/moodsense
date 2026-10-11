@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { getProfile, getProfiles, type AmbientTrack, type MoodProfile } from './moods.js';
+import { DEFAULT_PROFILES, getProfile, getProfiles, type AmbientTrack, type MoodProfile } from './moods.js';
 import { mergeSnapshot, type SettingsSnapshot } from './snapshot.js';
 import { accentFor, type PanelState } from './panelState.js';
+import { sanitizeMoodPack, sanitizeProfile, slugifyMoodId } from './profileOps.js';
 import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
 
@@ -43,6 +44,11 @@ export function activate(context: vscode.ExtensionContext): void {
       ambientOverride = track;
       pushState(context);
     },
+    saveMood: (id, profile) => saveMood(context, id, profile),
+    deleteMood: (id) => deleteMood(context, id),
+    resetMood: (id) => resetMood(context, id),
+    exportMoods: () => exportMoods(),
+    importMoods: () => importMoods(context),
   });
   breaks.onStateChange = () => pushState(context);
 
@@ -69,6 +75,15 @@ export function activate(context: vscode.ExtensionContext): void {
       pushState(context);
     }),
     vscode.commands.registerCommand('moodsense.resetBreakTimer', () => breaks.reset()),
+    vscode.commands.registerCommand('moodsense.exportMoods', () => exportMoods()),
+    vscode.commands.registerCommand('moodsense.importMoods', () => importMoods(context)),
+    vscode.commands.registerCommand('moodsense.resetMoods', async () => {
+      await vscode.workspace
+        .getConfiguration('moodsense')
+        .update('profiles', undefined, vscode.ConfigurationTarget.Global);
+      pushState(context);
+      void vscode.window.showInformationMessage('MoodSense: moods reset to the built-in set.');
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('moodsense.breaks')) {
         breaks.reset();
@@ -79,6 +94,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const touchesAppearance =
         e.affectsConfiguration('workbench.colorTheme') ||
         e.affectsConfiguration('editor.fontSize') ||
+        e.affectsConfiguration('editor.fontFamily') ||
+        e.affectsConfiguration('editor.lineHeight') ||
+        e.affectsConfiguration('editor.cursorStyle') ||
         e.affectsConfiguration('editor.minimap.enabled');
       if (touchesAppearance && Date.now() > applyingUntil) {
         // A manual appearance change while a mood is active: the restore
@@ -113,16 +131,42 @@ export function deactivate(): void {
 function buildState(context: vscode.ExtensionContext): PanelState {
   const cfg = vscode.workspace.getConfiguration('moodsense');
   const currentMood = context.globalState.get<string>(STATE_MOOD) ?? null;
+  const profiles = getProfiles();
   return {
     currentMood,
-    profiles: getProfiles(),
-    accent: accentFor(currentMood),
+    profiles,
+    builtinIds: Object.keys(DEFAULT_PROFILES),
+    themes: installedThemes(),
+    accent: accentFor(currentMood, currentMood ? profiles[currentMood] : undefined),
     ambientTrack: ambientOverride,
     volume: cfg.get<number>('ambient.volume', 0.7),
     breaksEnabled: cfg.get<boolean>('breaks.enabled', true),
     nextBreakAt: breaks.nextFireAt,
     breakTotalSeconds: Math.round(breaks.lastDurationMs / 1000),
   };
+}
+
+/** Every theme contributed by any installed extension (built-ins included),
+ *  for the mood editor's picker — users map moods onto themes they actually
+ *  own, Dracula and friends included. */
+function installedThemes(): { id: string; label: string }[] {
+  const seen = new Map<string, string>();
+  for (const ext of vscode.extensions.all) {
+    const themes = (ext.packageJSON as { contributes?: { themes?: { id?: string; label?: string }[] } })
+      ?.contributes?.themes;
+    if (!themes) {
+      continue;
+    }
+    for (const t of themes) {
+      const id = t.id ?? t.label;
+      if (id && !seen.has(id)) {
+        seen.set(id, t.label ?? id);
+      }
+    }
+  }
+  return [...seen.entries()]
+    .map(([id, label]) => ({ id, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function pushState(context: vscode.ExtensionContext): void {
@@ -182,6 +226,14 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
   await setWorkbenchTheme(profile.theme);
   await setEditorFontSize(profile.fontSize);
 
+  // Optional per-mood fields: a mood that defines one applies it; a mood
+  // that doesn't returns the editor to the user's own base value from the
+  // snapshot — so switching moods is always deterministic.
+  const snapshot = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
+  await setEditorValue('fontFamily', profile.fontFamily ?? snapshot?.fontFamily);
+  await setEditorValue('lineHeight', profile.lineHeight ?? snapshot?.lineHeight);
+  await setEditorValue('cursorStyle', profile.cursorStyle ?? snapshot?.cursorStyle);
+
   const allowLayout = vscode.workspace
     .getConfiguration('moodsense')
     .get<boolean>('applyLayoutChanges', false);
@@ -207,6 +259,9 @@ async function turnOff(context: vscode.ExtensionContext): Promise<void> {
     if (snapshot.fontSize !== undefined) {
       await setEditorFontSize(snapshot.fontSize);
     }
+    await setEditorValue('fontFamily', snapshot.fontFamily);
+    await setEditorValue('lineHeight', snapshot.lineHeight);
+    await setEditorValue('cursorStyle', snapshot.cursorStyle);
     if (snapshot.minimapEnabled !== undefined) {
       await setMinimap(snapshot.minimapEnabled);
     }
@@ -240,10 +295,14 @@ async function focusMode(context: vscode.ExtensionContext): Promise<void> {
 /* ---------------------------------- state ---------------------------------- */
 
 function takeSnapshot(): SettingsSnapshot {
+  const editor = vscode.workspace.getConfiguration('editor');
   return {
     theme: vscode.workspace.getConfiguration('workbench').get<string>('colorTheme'),
-    fontSize: vscode.workspace.getConfiguration('editor').get<number>('fontSize'),
-    minimapEnabled: vscode.workspace.getConfiguration('editor').get<boolean>('minimap.enabled'),
+    fontSize: editor.get<number>('fontSize'),
+    fontFamily: editor.get<string>('fontFamily'),
+    lineHeight: editor.get<number>('lineHeight'),
+    cursorStyle: editor.get<string>('cursorStyle'),
+    minimapEnabled: editor.get<boolean>('minimap.enabled'),
   };
 }
 
@@ -277,6 +336,110 @@ async function setMinimap(enabled: boolean): Promise<void> {
   await vscode.workspace
     .getConfiguration('editor')
     .update('minimap.enabled', enabled, vscode.ConfigurationTarget.Global);
+}
+
+/** Write an editor setting, or clear it back to the user's own value when
+ *  the given value is undefined (used for the optional per-mood fields). */
+async function setEditorValue(key: string, value: string | number | undefined): Promise<void> {
+  await vscode.workspace
+    .getConfiguration('editor')
+    .update(key, value, vscode.ConfigurationTarget.Global);
+}
+
+/* --------------------------- mood persistence ----------------------------- */
+
+async function persistProfiles(profiles: Record<string, MoodProfile>): Promise<void> {
+  await vscode.workspace
+    .getConfiguration('moodsense')
+    .update('profiles', profiles, vscode.ConfigurationTarget.Global);
+}
+
+async function saveMood(
+  context: vscode.ExtensionContext,
+  id: string | null,
+  rawProfile: unknown,
+): Promise<void> {
+  const profile = sanitizeProfile(rawProfile);
+  if (!profile) {
+    void vscode.window.showWarningMessage('MoodSense: that mood could not be saved (invalid data).');
+    return;
+  }
+  const profiles = { ...getProfiles() };
+  let moodId = id;
+  if (!moodId) {
+    moodId = slugifyMoodId(profile.label);
+    let n = 2;
+    const base = moodId;
+    while (profiles[moodId]) {
+      moodId = `${base}-${n++}`;
+    }
+  }
+  profiles[moodId] = profile;
+  await persistProfiles(profiles);
+  pushState(context);
+  void vscode.window.showInformationMessage(`MoodSense: "${profile.label}" saved.`);
+}
+
+async function deleteMood(context: vscode.ExtensionContext, id: string): Promise<void> {
+  if (id in DEFAULT_PROFILES) {
+    void vscode.window.showWarningMessage('MoodSense: built-in moods can be reset, not deleted.');
+    return;
+  }
+  const profiles = { ...getProfiles() };
+  delete profiles[id];
+  await persistProfiles(profiles);
+  if (context.globalState.get<string>(STATE_MOOD) === id) {
+    await context.globalState.update(STATE_MOOD, undefined);
+    updateStatusBar(undefined);
+  }
+  pushState(context);
+}
+
+async function resetMood(context: vscode.ExtensionContext, id: string): Promise<void> {
+  const builtin = DEFAULT_PROFILES[id];
+  if (!builtin) {
+    return;
+  }
+  const profiles = { ...getProfiles(), [id]: { ...builtin } };
+  await persistProfiles(profiles);
+  pushState(context);
+  void vscode.window.showInformationMessage(`MoodSense: "${builtin.label}" reset to its defaults.`);
+}
+
+async function exportMoods(): Promise<void> {
+  const json = JSON.stringify(getProfiles(), null, 2);
+  await vscode.env.clipboard.writeText(json);
+  void vscode.window.showInformationMessage(
+    'MoodSense: your moods are on the clipboard as JSON — share them or back them up anywhere.',
+  );
+}
+
+async function importMoods(context: vscode.ExtensionContext): Promise<void> {
+  const text = await vscode.window.showInputBox({
+    prompt: 'Paste a MoodSense mood pack (JSON)',
+    placeHolder: '{ "midnight-build": { "label": "Midnight Build", ... } }',
+  });
+  if (!text) {
+    return;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    void vscode.window.showWarningMessage('MoodSense: that was not valid JSON — nothing imported.');
+    return;
+  }
+  const pack = sanitizeMoodPack(parsed);
+  if (!pack) {
+    void vscode.window.showWarningMessage('MoodSense: no valid moods found in that pack — nothing imported.');
+    return;
+  }
+  const merged = { ...getProfiles(), ...pack };
+  await persistProfiles(merged);
+  pushState(context);
+  void vscode.window.showInformationMessage(
+    `MoodSense: imported ${Object.keys(pack).length} mood(s): ${Object.values(pack).map((p) => p.label).join(', ')}.`,
+  );
 }
 
 /** VS Code exposes no "is Zen on" getter, so MoodSense tracks the state it

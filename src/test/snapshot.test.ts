@@ -4,12 +4,18 @@ import { mergeSnapshot, type SettingsSnapshot } from '../snapshot.js';
 const original: SettingsSnapshot = {
   theme: 'Default Light Modern',
   fontSize: 13,
+  fontFamily: 'Consolas',
+  lineHeight: 1.5,
+  cursorStyle: 'line',
   minimapEnabled: true,
 };
 
 const manualEdit: SettingsSnapshot = {
   theme: 'Monokai',
   fontSize: 18,
+  fontFamily: 'JetBrains Mono',
+  lineHeight: 1.9,
+  cursorStyle: 'block',
   minimapEnabled: false,
 };
 

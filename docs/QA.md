@@ -38,3 +38,14 @@ list covers what only a live IDE can prove.
 ## Cleanliness
 - [ ] No network requests from the extension (DevTools / firewall spot-check)
 - [ ] Extension Host log shows no errors across a full switch cycle
+
+## Mood editor & ownership (0.3.0)
+- [ ] "+ New mood" opens the editor; saving creates a row and writes moodsense.profiles
+- [ ] Editor theme picker lists installed themes (incl. any marketplace themes)
+- [ ] Accent swatch + custom color re-theme the panel when the mood is active
+- [ ] A mood with fontFamily/lineHeight/cursorStyle applies them; switching to a
+      mood without them returns the editor to your own defaults; Off restores all
+- [ ] Edit a built-in → Reset restores its defaults; Delete is not offered
+- [ ] Delete a custom mood (the active one) → mood clears cleanly
+- [ ] Export copies JSON; Import of that JSON round-trips; Import of garbage
+      shows the warning and changes nothing

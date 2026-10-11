@@ -4,6 +4,9 @@
 export interface SettingsSnapshot {
   theme: string | undefined;
   fontSize: number | undefined;
+  fontFamily: string | undefined;
+  lineHeight: number | undefined;
+  cursorStyle: string | undefined;
   minimapEnabled: boolean | undefined;
 }
 

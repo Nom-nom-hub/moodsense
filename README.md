@@ -24,17 +24,40 @@ sound, or rhythm for any mood, or invent your own moods entirely. Default
 profiles use only built-in VS Code themes, so MoodSense works with zero
 other extensions installed.
 
+## Make it yours
+
+MoodSense is built to be owned, not just used:
+
+- **Visual mood editor** — open the MoodSense panel, hover any mood, hit the
+  pencil (or "+ New mood"). Name it, pick an icon and an accent color, choose
+  any theme you have installed (Dracula, One Dark Pro, your own finds —
+  if it's in your VS Code, it's in the picker), set the font size, soundscape,
+  and break rhythm. Under *Typography & cursor*, a mood can also carry its
+  own font family, line height, and cursor style. No JSON required — saving
+  writes to your settings for you.
+- **Your colors** — every mood has its own accent hue; the whole panel
+  re-themes around the mood you're in.
+- **Export / Import** — your mood set copies out as JSON from the panel
+  footer. Share a mood pack with a friend; import theirs (packs are
+  validated and sanitized before they can touch your settings).
+- **Protected defaults** — built-in moods can be edited and reset to their
+  defaults in one click, never accidentally deleted.
+
 ## How it works
 
 - **Status bar switcher** — click the MoodSense item, pick how you're working.
-- **Snapshot & restore** — before the first mood applies, MoodSense saves your
-  current theme/font/minimap. `MoodSense: Off` restores them byte-for-byte.
+- **Control panel** — a sidebar home for your moods, ambient sound, and break
+  countdown, with the mood editor built in.
+- **Snapshot & restore** — before the first mood applies, MoodSense saves
+  your current theme, font, line height, cursor, and minimap.
+  `MoodSense: Off` restores them byte-for-byte — and if you change any of
+  them by hand mid-mood, the restore point follows your latest setup.
 - **Gentle by default** — theme, font, and sound adapt automatically. Layout
   changes (Zen mode, minimap) only happen if you opt in
   (`moodsense.applyLayoutChanges`) or invoke **Focus Mode** yourself. Your IDE
   never rearranges itself uninvited.
-- **Ambient player** — three generated soundscapes (deep drone, rain, wind)
-  in a small webview player. Generated locally; nothing streams.
+- **Ambient sound** — three generated soundscapes (deep drone, rain, wind)
+  played from the control panel. Generated locally; nothing streams.
 - **Break reminders** — a plain, honest timer (default 50 min) with Snooze /
   Dismiss / Turn off. The Tired mood shortens the interval automatically.
 
@@ -44,8 +67,9 @@ other extensions installed.
 - `MoodSense: Focused / Relaxed / Tired / Energetic` — direct set
 - `MoodSense: Off (Restore My Setup)`
 - `MoodSense: Focus Mode`
-- `MoodSense: Open Ambient Player` / `Stop Ambient Sound`
+- `MoodSense: Open Control Panel` / `Stop Ambient Sound`
 - `MoodSense: Reset Break Timer`
+- `MoodSense: Export Moods (JSON to Clipboard)` / `Import Moods (Paste JSON)` / `Reset Moods to Defaults`
 
 ## Privacy
 

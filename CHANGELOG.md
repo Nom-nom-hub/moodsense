@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-10-11
+
+The ownership release — MoodSense is now yours to shape:
+
+- **Visual mood editor in the panel:** create and edit moods without touching JSON — name, icon, accent color (swatches + custom picker), theme (picked from the themes you actually have installed), font size, ambient track, break rhythm, Zen/minimap, plus per-mood font family, line height, and cursor style under Typography & cursor
+- **More environment per mood:** font family, line height, and cursor style now adapt with the mood — and Off restores them exactly (snapshot coverage extended, manual edits still refresh the restore point)
+- **Accent colors are per-mood and yours** — the panel and active states follow your chosen hue
+- **Export / Import moods:** copy your whole mood set as JSON from the panel footer, share it, import someone else's pack (validated + sanitized before it can touch settings)
+- **Built-ins are protected:** edit them freely, reset them to defaults in one click; delete is for your own moods
+- Commands added: Export Moods, Import Moods, Reset Moods to Defaults
+
+
 ## 0.2.1 — 2026-10-11
 
 Design overhaul — remove the generated look:

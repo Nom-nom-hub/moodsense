@@ -6,6 +6,10 @@ import type { AmbientTrack, MoodProfile } from './moods.js';
 export interface PanelState {
   currentMood: string | null;
   profiles: Record<string, MoodProfile>;
+  /** Ids of the built-in moods (the editor offers Reset instead of Delete). */
+  builtinIds: string[];
+  /** Themes installed in this VS Code, for the editor's theme picker. */
+  themes: { id: string; label: string }[];
   accent: string;
   ambientTrack: AmbientTrack;
   volume: number;
@@ -46,11 +50,19 @@ export function iconSvg(name: string | undefined): string {
 
 export const IDLE_ACCENT = '#8B93A7';
 
-export function accentFor(moodId: string | null | undefined): string {
+export function accentFor(moodId: string | null | undefined, profile?: MoodProfile): string {
+  if (profile?.accent) {
+    return profile.accent;
+  }
   if (moodId && MOOD_ACCENTS[moodId]) {
     return MOOD_ACCENTS[moodId];
   }
   return IDLE_ACCENT;
+}
+
+/** The hue a mood row renders in: the profile's own accent wins. */
+export function accentOf(moodId: string, profile: MoodProfile): string {
+  return accentFor(moodId, profile);
 }
 
 /** "12:34" / "45s" / "now" — used by the panel's break countdown. */

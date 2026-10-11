@@ -9,6 +9,11 @@ export interface PanelActions {
   resetBreak(): void;
   setVolume(volume: number): Promise<void>;
   setAmbient(track: AmbientTrack): void;
+  saveMood(id: string | null, profile: unknown): Promise<void>;
+  deleteMood(id: string): Promise<void>;
+  resetMood(id: string): Promise<void>;
+  exportMoods(): Promise<void>;
+  importMoods(): Promise<void>;
 }
 
 const TRACK_FILES: Record<Exclude<AmbientTrack, 'none'>, string> = {
@@ -16,6 +21,14 @@ const TRACK_FILES: Record<Exclude<AmbientTrack, 'none'>, string> = {
   rain: 'rain.ogg',
   wind: 'wind.ogg',
 };
+
+interface PanelMessage {
+  type: string;
+  id?: string | null;
+  value?: number;
+  track?: AmbientTrack;
+  profile?: unknown;
+}
 
 /** The MoodSense control panel: a WebviewView in the Activity Bar.
  *
@@ -46,7 +59,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
     };
     view.webview.html = this.html(view.webview);
-    view.webview.onDidReceiveMessage((msg: { type: string; id?: string; value?: number; track?: AmbientTrack }) => {
+    view.webview.onDidReceiveMessage((msg: PanelMessage) => {
       void this.onMessage(msg);
     });
     view.onDidChangeVisibility(() => {
@@ -88,7 +101,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  private async onMessage(msg: { type: string; id?: string; value?: number; track?: AmbientTrack }): Promise<void> {
+  private async onMessage(msg: PanelMessage): Promise<void> {
     switch (msg.type) {
       case 'ready':
         this.push();
@@ -116,6 +129,25 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (msg.track) {
           this.actions.setAmbient(msg.track);
         }
+        break;
+      case 'saveMood':
+        await this.actions.saveMood(msg.id ?? null, msg.profile);
+        break;
+      case 'deleteMood':
+        if (msg.id) {
+          await this.actions.deleteMood(msg.id);
+        }
+        break;
+      case 'resetMood':
+        if (msg.id) {
+          await this.actions.resetMood(msg.id);
+        }
+        break;
+      case 'export':
+        await this.actions.exportMoods();
+        break;
+      case 'import':
+        await this.actions.importMoods();
         break;
     }
   }
@@ -221,6 +253,60 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   .btn.ghost { border: 1px solid var(--line); background: transparent; color: var(--muted); font-weight: 550; }
   .btn.ghost:hover { color: var(--ink); border-color: var(--muted); }
   .foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); text-align: center; }
+  .foot .linkish { font-size: 10px; }
+
+  .labelrow { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 0 8px; }
+  .labelrow .label { margin: 0; }
+  .mini {
+    appearance: none; cursor: pointer; background: none; border: none; padding: 0;
+    color: var(--muted); font-size: 11px; font-weight: 550;
+  }
+  .mini:hover { color: var(--ink); }
+  .row .edit {
+    appearance: none; cursor: pointer; flex: none; width: 24px; height: 24px;
+    border: none; border-radius: 6px; background: transparent; color: var(--muted);
+    display: flex; align-items: center; justify-content: center; opacity: 0;
+    transition: opacity .12s ease, background .12s ease, color .12s ease;
+  }
+  .row:hover .edit, .row:focus-within .edit { opacity: 1; }
+  .row .edit:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
+  .row .edit svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  .hidden { display: none !important; }
+  .ed-title { font-size: 13px; font-weight: 650; margin: 16px 0 2px; }
+  .ed-sub { font-size: 11px; color: var(--muted); margin-bottom: 6px; line-height: 1.45; }
+  .field { margin-top: 12px; }
+  .field > .flabel { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; }
+  .field input[type="text"], .field select {
+    width: 100%; background: color-mix(in srgb, var(--ink) 6%, transparent);
+    border: 1px solid var(--line); border-radius: 7px; color: var(--ink);
+    font-family: inherit; font-size: 12.5px; padding: 6px 8px;
+  }
+  .field select option { background: var(--vscode-editor-background); color: var(--ink); }
+  .field .fval { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tiles { display: flex; gap: 6px; }
+  .tile {
+    appearance: none; cursor: pointer; width: 34px; height: 34px; border-radius: 7px;
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color .12s ease, color .12s ease, background .12s ease;
+  }
+  .tile svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .tile:hover { color: var(--ink); }
+  .tile.sel { border-color: var(--accent); color: var(--ink); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .swatches { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .sw {
+    appearance: none; cursor: pointer; width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid transparent; padding: 0;
+  }
+  .sw.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+  input[type="color"] { width: 26px; height: 26px; border: none; background: none; padding: 0; cursor: pointer; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; padding: 3px 0; }
+  .check input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+  details.adv { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+  details.adv summary { font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; letter-spacing: .04em; }
+  .btn.danger { border: 1px solid transparent; background: transparent; color: var(--vscode-errorForeground, #f87171); flex: 0 0 auto; }
+  .btn.danger:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -230,7 +316,11 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div class="state"><span class="dot"></span><span id="headState">Off</span></div>
   </div>
 
-  <div class="label">Mood</div>
+  <div id="listView">
+  <div class="labelrow">
+    <span class="label">Mood</span>
+    <button class="mini" id="newMood">+ New mood</button>
+  </div>
   <div class="rows" id="moodRows"></div>
 
   <div class="label">Ambient</div>
@@ -252,7 +342,80 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     <button class="btn primary" id="focusBtn">Focus Mode</button>
     <button class="btn ghost" id="offBtn">Off · Restore</button>
   </div>
-  <div class="foot">Local only — no telemetry, no accounts.</div>
+  <div class="foot">Local only — no telemetry, no accounts.<br/>
+    <button class="linkish" id="exportBtn">Export moods</button> · <button class="linkish" id="importBtn">Import moods</button>
+  </div>
+  </div>
+
+  <div id="editorView" class="hidden">
+    <div class="ed-title" id="edTitle">New mood</div>
+    <div class="ed-sub">A mood is a whole environment: theme, type, sound, and rhythm. It saves to your settings and is yours — edit it any time.</div>
+
+    <div class="field">
+      <span class="flabel">Name</span>
+      <input type="text" id="f-name" placeholder="e.g. Midnight Build" maxlength="40" />
+    </div>
+    <div class="field">
+      <span class="flabel">Icon</span>
+      <div class="tiles" id="f-icons"></div>
+    </div>
+    <div class="field">
+      <span class="flabel">Accent color</span>
+      <div class="swatches" id="f-accents"></div>
+    </div>
+    <div class="field">
+      <span class="flabel">Theme</span>
+      <select id="f-theme"></select>
+    </div>
+    <div class="field">
+      <span class="flabel">Font size · <span class="fval" id="f-fontsize-val"></span></span>
+      <input type="range" id="f-fontsize" min="10" max="24" step="1" style="width: 100%;" />
+    </div>
+    <div class="field">
+      <span class="flabel">Ambient</span>
+      <div class="seg" id="f-ambient"></div>
+    </div>
+    <div class="field">
+      <span class="flabel">Break rhythm · <span class="fval" id="f-breaks-val"></span></span>
+      <input type="range" id="f-breaks" min="0.4" max="2" step="0.2" style="width: 100%;" />
+    </div>
+    <div class="field">
+      <span class="flabel">Layout</span>
+      <label class="check"><input type="checkbox" id="f-zen" /> Zen mode <span class="fval">(only with layout changes enabled)</span></label>
+      <label class="check"><input type="checkbox" id="f-minimap" /> Minimap visible</label>
+    </div>
+
+    <details class="adv">
+      <summary>Typography &amp; cursor</summary>
+      <div class="field">
+        <span class="flabel">Font family</span>
+        <input type="text" id="f-fontfamily" placeholder="Blank = keep your own default" />
+      </div>
+      <div class="field">
+        <span class="flabel">Line height</span>
+        <input type="text" id="f-lineheight" placeholder="Blank = keep your own default (e.g. 1.6)" inputmode="decimal" />
+      </div>
+      <div class="field">
+        <span class="flabel">Cursor style</span>
+        <select id="f-cursor">
+          <option value="">Keep your own default</option>
+          <option value="line">Line</option>
+          <option value="block">Block</option>
+          <option value="underline">Underline</option>
+          <option value="line-thin">Line (thin)</option>
+          <option value="block-outline">Block outline</option>
+          <option value="underline-thin">Underline (thin)</option>
+        </select>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button class="btn primary" id="f-save">Save mood</button>
+      <button class="btn ghost" id="f-cancel">Cancel</button>
+      <button class="btn danger hidden" id="f-delete">Delete</button>
+      <button class="btn danger hidden" id="f-reset">Reset</button>
+    </div>
+  </div>
 
   <audio id="player" loop preload="auto"></audio>
 
@@ -297,16 +460,20 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       });
       for (const id of ids) {
         const p = state.profiles[id];
-        const hue = ACCENTS[id] || IDLE;
-        const btn = document.createElement('button');
-        btn.className = 'row' + (state.currentMood === id ? ' active' : '');
-        btn.style.setProperty('--row', hue);
-        btn.innerHTML = '<span class="ic"></span><span class="txt"><span class="name"></span><span class="sub"></span></span><span class="on"></span>';
-        btn.querySelector('.ic').innerHTML = svgIcon(p.icon);
-        btn.querySelector('.name').textContent = p.label;
-        btn.querySelector('.sub').textContent = p.theme + ' · ' + p.fontSize + 'px · ' + (p.ambient === 'none' ? 'Silent' : p.ambient[0].toUpperCase() + p.ambient.slice(1));
-        btn.addEventListener('click', () => vscode.postMessage({ type: 'setMood', id }));
-        rows.appendChild(btn);
+        const hue = p.accent || ACCENTS[id] || IDLE;
+        const row = document.createElement('div');
+        row.className = 'row' + (state.currentMood === id ? ' active' : '');
+        row.style.setProperty('--row', hue);
+        row.setAttribute('role', 'button');
+        row.setAttribute('tabindex', '0');
+        row.innerHTML = '<span class="ic"></span><span class="txt"><span class="name"></span><span class="sub"></span></span><button class="edit" title="Edit mood"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button><span class="on"></span>';
+        row.querySelector('.ic').innerHTML = svgIcon(p.icon);
+        row.querySelector('.name').textContent = p.label;
+        row.querySelector('.sub').textContent = p.theme + ' · ' + p.fontSize + 'px · ' + (p.ambient === 'none' ? 'Silent' : p.ambient[0].toUpperCase() + p.ambient.slice(1));
+        row.addEventListener('click', () => vscode.postMessage({ type: 'setMood', id }));
+        row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vscode.postMessage({ type: 'setMood', id }); } });
+        row.querySelector('.edit').addEventListener('click', (e) => { e.stopPropagation(); openEditor(id); });
+        rows.appendChild(row);
       }
 
       const seg = document.getElementById('trackSeg');
@@ -353,6 +520,165 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     document.getElementById('offBtn').addEventListener('click', () => vscode.postMessage({ type: 'off' }));
     document.getElementById('focusBtn').addEventListener('click', () => vscode.postMessage({ type: 'focus' }));
     document.getElementById('resetBreak').addEventListener('click', () => vscode.postMessage({ type: 'resetBreak' }));
+    document.getElementById('exportBtn').addEventListener('click', () => vscode.postMessage({ type: 'export' }));
+    document.getElementById('importBtn').addEventListener('click', () => vscode.postMessage({ type: 'import' }));
+
+    /* ------------------------------ mood editor ------------------------------ */
+    const SWATCHES = ['#7C8CF8', '#4ADE80', '#A78BFA', '#FBBF24', '#F472B6', '#38BDF8', '#F87171', '#94A3B8'];
+    const ICON_NAMES = ['target', 'leaf', 'moon', 'bolt', 'dot'];
+    let editingId = null;
+    let selIcon = 'target';
+    let selAccent = SWATCHES[0];
+    let selAmbient = 'deep';
+
+    function showEditor(show) {
+      document.getElementById('listView').classList.toggle('hidden', show);
+      document.getElementById('editorView').classList.toggle('hidden', !show);
+    }
+
+    function openEditor(id) {
+      if (!state) return;
+      editingId = id;
+      const p = id ? state.profiles[id] : null;
+      document.getElementById('edTitle').textContent = p ? 'Edit mood' : 'New mood';
+      document.getElementById('f-name').value = p ? p.label : '';
+      selIcon = p ? p.icon : 'target';
+      selAccent = (p && p.accent) || ACCENTS[id] || SWATCHES[0];
+      selAmbient = p ? p.ambient : 'deep';
+
+      const iconBox = document.getElementById('f-icons');
+      iconBox.innerHTML = '';
+      for (const name of ICON_NAMES) {
+        const t = document.createElement('button');
+        t.className = 'tile' + (selIcon === name ? ' sel' : '');
+        t.innerHTML = svgIcon(name);
+        t.title = name;
+        t.addEventListener('click', () => {
+          selIcon = name;
+          iconBox.querySelectorAll('.tile').forEach((el) => el.classList.remove('sel'));
+          t.classList.add('sel');
+        });
+        iconBox.appendChild(t);
+      }
+
+      const swBox = document.getElementById('f-accents');
+      swBox.innerHTML = '';
+      for (const hex of SWATCHES) {
+        const s = document.createElement('button');
+        s.className = 'sw' + (selAccent === hex ? ' sel' : '');
+        s.style.background = hex;
+        s.title = hex;
+        s.addEventListener('click', () => {
+          selAccent = hex;
+          swBox.querySelectorAll('.sw').forEach((el) => el.classList.remove('sel'));
+          s.classList.add('sel');
+        });
+        swBox.appendChild(s);
+      }
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = selAccent;
+      color.title = 'Custom color';
+      color.addEventListener('input', () => {
+        selAccent = color.value;
+        swBox.querySelectorAll('.sw').forEach((el) => el.classList.remove('sel'));
+      });
+      swBox.appendChild(color);
+
+      const themeSel = document.getElementById('f-theme');
+      themeSel.innerHTML = '';
+      const wanted = p ? p.theme : 'Default Dark Modern';
+      let found = false;
+      for (const t of state.themes) {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.label === t.id ? t.id : t.label;
+        if (t.id === wanted) found = true;
+        themeSel.appendChild(opt);
+      }
+      if (!found) {
+        const opt = document.createElement('option');
+        opt.value = wanted;
+        opt.textContent = wanted + ' (not installed)';
+        themeSel.appendChild(opt);
+      }
+      themeSel.value = wanted;
+
+      const fs = document.getElementById('f-fontsize');
+      fs.value = p ? p.fontSize : 14;
+      document.getElementById('f-fontsize-val').textContent = fs.value + 'px';
+
+      const amb = document.getElementById('f-ambient');
+      amb.innerHTML = '';
+      for (const [track, label] of TRACKS) {
+        const b = document.createElement('button');
+        b.className = selAmbient === track ? 'active' : '';
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          selAmbient = track;
+          amb.querySelectorAll('button').forEach((el) => el.classList.remove('active'));
+          b.classList.add('active');
+        });
+        amb.appendChild(b);
+      }
+
+      const br = document.getElementById('f-breaks');
+      br.value = p ? p.breakIntervalMultiplier : 1;
+      document.getElementById('f-breaks-val').textContent = breaksLabel(parseFloat(br.value));
+
+      document.getElementById('f-zen').checked = p ? p.zen : false;
+      document.getElementById('f-minimap').checked = p ? p.minimap : true;
+      document.getElementById('f-fontfamily').value = p && p.fontFamily ? p.fontFamily : '';
+      document.getElementById('f-lineheight').value = p && p.lineHeight ? String(p.lineHeight) : '';
+      document.getElementById('f-cursor').value = p && p.cursorStyle ? p.cursorStyle : '';
+
+      const isBuiltin = id ? state.builtinIds.includes(id) : false;
+      document.getElementById('f-delete').classList.toggle('hidden', !(id && !isBuiltin));
+      document.getElementById('f-reset').classList.toggle('hidden', !isBuiltin);
+      showEditor(true);
+    }
+
+    function breaksLabel(v) {
+      return v < 1 ? '×' + v.toFixed(1) + ' — breaks sooner' : v > 1 ? '×' + v.toFixed(1) + ' — breaks later' : '×1.0 — standard';
+    }
+    document.getElementById('f-fontsize').addEventListener('input', (e) => {
+      document.getElementById('f-fontsize-val').textContent = e.target.value + 'px';
+    });
+    document.getElementById('f-breaks').addEventListener('input', (e) => {
+      document.getElementById('f-breaks-val').textContent = breaksLabel(parseFloat(e.target.value));
+    });
+    document.getElementById('newMood').addEventListener('click', () => openEditor(null));
+    document.getElementById('f-cancel').addEventListener('click', () => showEditor(false));
+    document.getElementById('f-delete').addEventListener('click', () => {
+      if (editingId) vscode.postMessage({ type: 'deleteMood', id: editingId });
+      showEditor(false);
+    });
+    document.getElementById('f-reset').addEventListener('click', () => {
+      if (editingId) vscode.postMessage({ type: 'resetMood', id: editingId });
+      showEditor(false);
+    });
+    document.getElementById('f-save').addEventListener('click', () => {
+      const lhRaw = document.getElementById('f-lineheight').value.trim();
+      const lh = lhRaw ? parseFloat(lhRaw) : undefined;
+      const ff = document.getElementById('f-fontfamily').value.trim();
+      const cur = document.getElementById('f-cursor').value;
+      const profile = {
+        label: document.getElementById('f-name').value.trim() || 'Custom Mood',
+        icon: selIcon,
+        accent: selAccent,
+        theme: document.getElementById('f-theme').value,
+        fontSize: parseInt(document.getElementById('f-fontsize').value, 10),
+        fontFamily: ff || undefined,
+        lineHeight: typeof lh === 'number' && !Number.isNaN(lh) ? lh : undefined,
+        cursorStyle: cur || undefined,
+        zen: document.getElementById('f-zen').checked,
+        minimap: document.getElementById('f-minimap').checked,
+        ambient: selAmbient,
+        breakIntervalMultiplier: parseFloat(document.getElementById('f-breaks').value),
+      };
+      vscode.postMessage({ type: 'saveMood', id: editingId, profile });
+      showEditor(false);
+    });
 
     window.addEventListener('message', (event) => {
       const msg = event.data;
