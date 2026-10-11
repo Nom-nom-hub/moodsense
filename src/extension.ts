@@ -1,13 +1,8 @@
 import * as vscode from 'vscode';
 import { getProfile, getProfiles, type MoodProfile } from './moods.js';
+import { mergeSnapshot, type SettingsSnapshot } from './snapshot.js';
 import { AmbientPlayer } from './ambient.js';
 import { BreakTimer } from './breaks.js';
-
-interface SettingsSnapshot {
-  theme: string | undefined;
-  fontSize: number | undefined;
-  minimapEnabled: boolean | undefined;
-}
 
 const STATE_MOOD = 'moodsense.currentMood';
 const STATE_SNAPSHOT = 'moodsense.snapshot';
@@ -16,6 +11,14 @@ const STATE_ZEN_ON = 'moodsense.zenOn';
 let statusBar: vscode.StatusBarItem;
 let ambient: AmbientPlayer;
 let breaks: BreakTimer;
+
+/** MoodSense's own configuration writes also fire onDidChangeConfiguration.
+ *  This timestamp marks a short window after our writes during which config
+ *  changes are treated as ours, not as the user's manual edits. */
+let applyingUntil = 0;
+function markApplying(): void {
+  applyingUntil = Date.now() + 3000;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   ambient = new AmbientPlayer(context.extensionUri);
@@ -39,6 +42,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('moodsense.breaks')) {
         breaks.reset();
+      }
+      const touchesAppearance =
+        e.affectsConfiguration('workbench.colorTheme') ||
+        e.affectsConfiguration('editor.fontSize') ||
+        e.affectsConfiguration('editor.minimap.enabled');
+      if (touchesAppearance && Date.now() > applyingUntil) {
+        // A manual appearance change while a mood is active: the restore
+        // point follows the user's latest setup (see snapshot.ts).
+        const existing = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
+        const merged = mergeSnapshot(existing, takeSnapshot());
+        if (merged) {
+          void context.globalState.update(STATE_SNAPSHOT, merged);
+        }
       }
     }),
   );
@@ -101,6 +117,7 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
     await context.globalState.update(STATE_SNAPSHOT, takeSnapshot());
   }
 
+  markApplying();
   await setWorkbenchTheme(profile.theme);
   await setEditorFontSize(profile.fontSize);
 
@@ -119,6 +136,7 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
 }
 
 async function turnOff(context: vscode.ExtensionContext): Promise<void> {
+  markApplying();
   const snapshot = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
   if (snapshot) {
     if (snapshot.theme !== undefined) {
@@ -146,6 +164,7 @@ async function focusMode(context: vscode.ExtensionContext): Promise<void> {
   if (!context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT)) {
     await context.globalState.update(STATE_SNAPSHOT, takeSnapshot());
   }
+  markApplying();
   await setMinimap(false);
   await setZen(context, true);
   if (ambient.track === 'none') {
