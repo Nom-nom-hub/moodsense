@@ -103,4 +103,13 @@ describe('routines + ambient layer sanitization', () => {
     expect(sanitizeProfile({ ambientLayer: 'none' })?.ambientLayer).toBeUndefined();
     expect(sanitizeProfile({ ambientLayer: 'file:../x.mp3' })?.ambientLayer).toBeUndefined();
   });
+
+  it('keeps a valid click personality, defaults junk to tick + reactive', () => {
+    const p = sanitizeProfile({ label: 'A', clickProfile: 'thock', clickSpeed: false });
+    expect(p?.clickProfile).toBe('thock');
+    expect(p?.clickSpeed).toBe(false);
+    const junk = sanitizeProfile({ label: 'B', clickProfile: 'laser', clickSpeed: 'yes' });
+    expect(junk?.clickProfile).toBe('tick');
+    expect(junk?.clickSpeed).toBe(true);
+  });
 });

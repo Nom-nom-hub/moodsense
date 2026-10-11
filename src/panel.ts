@@ -593,6 +593,17 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       <div class="seg" id="f-layer"></div>
     </div>
     <div class="field">
+      <span class="flabel">Click sound · this mood's personality</span>
+      <div class="seg wrap" id="f-clicks"></div>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-clickspeed" /> Sharpen clicks with typing speed</label>
+      <div style="margin-top: 6px;">
+        <button class="linkish" id="f-click-test" type="button">Preview click</button>
+        <span class="fval" id="f-click-note"></span>
+      </div>
+    </div>
+    <div class="field">
       <span class="flabel">Break rhythm · <span class="fval" id="f-breaks-val"></span></span>
       <input type="range" id="f-breaks" min="0.4" max="2" step="0.2" style="width: 100%;" />
     </div>
@@ -797,35 +808,86 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       c2.globalAlpha = 1;
       requestAnimationFrame(drawEq);
     }
-    /* Speed-aware clicks: a synthesized tick whose pitch and weight follow
-     * the typing tier the host measured (counts only — never content). */
-    function playClick(tier) {
-      if (!state || !state.typingClicks) return;
-      ensureGraph();
-      if (!actx) return;
-      if (actx.state === 'suspended') actx.resume().catch(() => {});
+    /* Speed-aware clicks: synthesized ticks whose character belongs to the
+     * mood being worn — each mood owns a click family, and reactive moods
+     * sharpen with the typing tier the host measured (counts only). */
+    function ensureNoise() {
       if (!noiseBuf) {
         noiseBuf = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.08), actx.sampleRate);
         const d = noiseBuf.getChannelData(0);
         for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
       }
+      return noiseBuf;
+    }
+    function noiseBurst(t) {
+      const s = actx.createBufferSource();
+      s.buffer = ensureNoise();
+      s.start(t);
+      s.stop(t + 0.09);
+      return s;
+    }
+    function emitClick(family, tier) {
+      if (family === 'off') return;
+      ensureGraph();
+      if (!actx) return;
+      if (actx.state === 'suspended') actx.resume().catch(() => {});
       const t = actx.currentTime;
-      const srcNode = actx.createBufferSource();
-      srcNode.buffer = noiseBuf;
-      const bp = actx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = [1700, 2500, 3300][tier] || 2500;
-      bp.Q.value = 7;
-      const g = actx.createGain();
-      g.gain.setValueAtTime([0.1, 0.17, 0.24][tier] || 0.17, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + [0.07, 0.055, 0.04][tier]);
-      srcNode.connect(bp);
-      bp.connect(g);
-      g.connect(actx.destination);
-      srcNode.start(t);
-      srcNode.stop(t + 0.09);
+      if (family === 'thock') {
+        // Deep key: lowpassed noise body + a sine thump that rises and
+        // shortens as you speed up — the sharpening IS the feedback.
+        const lp = actx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = [520, 720, 980][tier];
+        const ng = actx.createGain();
+        ng.gain.setValueAtTime(0.32, t);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + [0.1, 0.085, 0.07][tier]);
+        noiseBurst(t).connect(lp);
+        lp.connect(ng);
+        ng.connect(actx.destination);
+        const osc = actx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime([150, 172, 198][tier], t);
+        osc.frequency.exponentialRampToValueAtTime(70, t + 0.07);
+        const og = actx.createGain();
+        og.gain.setValueAtTime(0.2, t);
+        og.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+        osc.connect(og);
+        og.connect(actx.destination);
+        osc.start(t);
+        osc.stop(t + 0.09);
+      } else if (family === 'soft') {
+        const lp = actx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 850;
+        const g = actx.createGain();
+        g.gain.setValueAtTime([0.05, 0.07, 0.09][tier], t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        noiseBurst(t).connect(lp);
+        lp.connect(g);
+        g.connect(actx.destination);
+      } else {
+        // 'tick' — the classic bandpass tick.
+        const bp = actx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = [1700, 2500, 3300][tier] || 2500;
+        bp.Q.value = 7;
+        const g = actx.createGain();
+        g.gain.setValueAtTime([0.1, 0.17, 0.24][tier] || 0.17, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + [0.07, 0.055, 0.04][tier]);
+        noiseBurst(t).connect(bp);
+        bp.connect(g);
+        g.connect(actx.destination);
+      }
+    }
+    function playClick(tier) {
+      if (!state || !state.typingClicks) return;
+      const p = state.currentMood ? state.profiles[state.currentMood] : null;
+      const family = (p && p.clickProfile) || 'tick';
+      if (family === 'off') return;
+      const reactive = !p || p.clickSpeed !== false;
+      emitClick(family, reactive ? tier : 1);
       document.getElementById('tierLabel').textContent =
-        'Right now: ' + ['easy pace', 'cruising', 'flying'][tier] + '.';
+        'Right now: ' + ['easy pace', 'cruising', 'flying'][tier] + ' · ' + family + '.';
     }
 
     function fmt(ms) {
@@ -1063,6 +1125,9 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     let selAccent = SWATCHES[0];
     let selAmbient = 'deep';
     let selLayer = 'none';
+    let selClickProfile = 'tick';
+    let selClickSpeed = true;
+    let previewTier = 0;
     let selTheme = 'Default Dark Modern';
 
     function showEditor(show) {
@@ -1208,6 +1273,25 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         lay.appendChild(b);
       }
 
+      selClickProfile = (p && p.clickProfile) || 'tick';
+      selClickSpeed = !p || p.clickSpeed !== false;
+      previewTier = 0;
+      document.getElementById('f-click-note').textContent = '';
+      const clk = document.getElementById('f-clicks');
+      clk.innerHTML = '';
+      for (const [id, label] of [['thock', 'Thock'], ['tick', 'Tick'], ['soft', 'Soft'], ['off', 'Off']]) {
+        const b = document.createElement('button');
+        b.className = selClickProfile === id ? 'active' : '';
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          selClickProfile = id;
+          clk.querySelectorAll('button').forEach((el) => el.classList.remove('active'));
+          b.classList.add('active');
+        });
+        clk.appendChild(b);
+      }
+      document.getElementById('f-clickspeed').checked = selClickSpeed;
+
       const br = document.getElementById('f-breaks');
       br.value = p ? p.breakIntervalMultiplier : 1;
       document.getElementById('f-breaks-val').textContent = breaksLabel(parseFloat(br.value));
@@ -1231,6 +1315,23 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     document.getElementById('f-fontsize').addEventListener('input', (e) => {
       document.getElementById('f-fontsize-val').textContent = e.target.value + 'px';
       updatePreview();
+    });
+    document.getElementById('f-clickspeed').addEventListener('change', (e) => {
+      selClickSpeed = e.target.checked;
+      previewTier = 0;
+    });
+    document.getElementById('f-click-test').addEventListener('click', () => {
+      const note = document.getElementById('f-click-note');
+      if (selClickProfile === 'off') {
+        note.textContent = ' — this mood stays silent.';
+        return;
+      }
+      const tier = selClickSpeed ? previewTier : 1;
+      emitClick(selClickProfile, tier);
+      note.textContent = selClickSpeed
+        ? ' — ' + ['easy pace', 'cruising', 'flying'][tier] + (tier < 2 ? ' · press again to hear it sharpen' : '')
+        : ' — steady at every speed.';
+      previewTier = (previewTier + 1) % 3;
     });
     document.getElementById('f-name').addEventListener('input', updatePreview);
     document.getElementById('edBack').addEventListener('click', () => showEditor(false));
@@ -1274,6 +1375,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         ambient: selAmbient,
         ambientLayer: selLayer !== 'none' ? selLayer : undefined,
         breakIntervalMultiplier: parseFloat(document.getElementById('f-breaks').value),
+        clickProfile: selClickProfile,
+        clickSpeed: selClickSpeed,
       };
       vscode.postMessage({ type: 'saveMood', id: editingId, profile });
       showEditor(false);

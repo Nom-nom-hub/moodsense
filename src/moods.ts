@@ -26,6 +26,21 @@ export interface MoodProfile {
   /** Optional second soundscape layered under the main track. */
   ambientLayer?: AmbientTrack;
   breakIntervalMultiplier: number;
+  /** Click-sound family this mood owns when typing clicks are enabled:
+   *  thock (deep keys) | tick (classic) | soft (felt tap) | off (silent).
+   *  The moat: a mood sounds like itself, not like every other mood. */
+  clickProfile?: ClickProfile;
+  /** When true, this mood's clicks sharpen with typing speed (three
+   *  tiers). When false, the click stays at its middle character. */
+  clickSpeed?: boolean;
+}
+
+export type ClickProfile = 'thock' | 'tick' | 'soft' | 'off';
+
+export const CLICK_PROFILES: ClickProfile[] = ['thock', 'tick', 'soft', 'off'];
+
+export function isClickProfile(x: unknown): x is ClickProfile {
+  return typeof x === 'string' && (CLICK_PROFILES as string[]).includes(x);
 }
 
 /** Built-in fallbacks. The package.json configuration default carries the same
@@ -36,21 +51,25 @@ export const DEFAULT_PROFILES: Record<string, MoodProfile> = {
     label: 'Focused', icon: 'target', accent: '#7C8CF8',
     theme: 'Default Dark Modern', fontSize: 14,
     zen: true, minimap: false, ambient: 'deep', breakIntervalMultiplier: 1.0,
+    clickProfile: 'thock', clickSpeed: true,
   },
   relaxed: {
     label: 'Relaxed', icon: 'leaf', accent: '#4ADE80',
     theme: 'Quiet Light', fontSize: 14,
     zen: false, minimap: true, ambient: 'rain', breakIntervalMultiplier: 1.0,
+    clickProfile: 'soft', clickSpeed: false,
   },
   tired: {
     label: 'Tired', icon: 'moon', accent: '#A78BFA',
     theme: 'Default Dark Modern', fontSize: 16,
     zen: false, minimap: true, ambient: 'rain', breakIntervalMultiplier: 0.6,
+    clickProfile: 'soft', clickSpeed: false,
   },
   energetic: {
     label: 'Energetic', icon: 'bolt', accent: '#FBBF24',
     theme: 'Monokai', fontSize: 13,
     zen: false, minimap: true, ambient: 'wind', breakIntervalMultiplier: 1.2,
+    clickProfile: 'tick', clickSpeed: true,
   },
 };
 

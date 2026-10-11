@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.0 — 2026-10-11
+
+Click personalities — the differentiator: a mood now owns how it sounds
+when you type, not just how it looks.
+
+- **`clickProfile` + `clickSpeed` on every mood.** Focused ships with a
+  deep **thock** (lowpassed body + sine thump) that rises and shortens as
+  your typing accelerates; Relaxed and Tired use a steady **soft** felt
+  tap that ignores speed; Energetic gets the bright reactive **tick**;
+  any mood can be set silent
+- **Editor controls** in Sound, rhythm & layout: click family picker,
+  "sharpen with typing speed" toggle, and a **Preview click** button that
+  steps through the three speed tiers so you can hear the sharpening
+  before you save
+- Fields are sanitized like everything else in a profile (packs can carry
+  personalities safely) and ride along in exports/imports
+
+
 ## 0.7.0 — 2026-10-11
 
 Reactive sound, CodeSound-style — built so it can't hurt the audio it

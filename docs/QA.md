@@ -103,3 +103,9 @@ list covers what only a live IDE can prove.
       → no click burst
 - [ ] If the "Visualizer unavailable" note appears on your build, note it —
       that's the honest-degradation path working; sound must be unaffected
+
+## Click personality checks (0.8.0)
+- [ ] Typing clicks on + Focused worn: slow typing = deep thock, fast = sharper
+- [ ] Wear Relaxed: clicks turn soft and steady regardless of speed
+- [ ] Editor → Thock + Preview click: three presses climb easy → cruising → flying
+- [ ] Set a mood's clicks to Off: it stays silent while worn; others still click

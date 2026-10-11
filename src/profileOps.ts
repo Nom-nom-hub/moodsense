@@ -1,4 +1,4 @@
-import type { AmbientTrack, CursorStyle, MoodProfile } from './moods.js';
+import type { AmbientTrack, ClickProfile, CursorStyle, MoodProfile } from './moods.js';
 
 /** Pure validation/sanitization for mood profiles — used by the panel's
  *  mood editor on save and by mood-pack import. Anything a user types,
@@ -6,6 +6,12 @@ import type { AmbientTrack, CursorStyle, MoodProfile } from './moods.js';
  *  allowed to touch their settings. */
 
 const AMBIENT_TRACKS: AmbientTrack[] = ['deep', 'rain', 'wind', 'none'];
+
+const CLICK_PROFILES_LOCAL = ['thock', 'tick', 'soft', 'off'];
+
+function isClickProfileLocal(x: unknown): x is ClickProfile {
+  return typeof x === 'string' && (CLICK_PROFILES_LOCAL as string[]).includes(x);
+}
 
 /** A custom track token is "file:<name>" where <name> is a bare filename —
  *  no path separators, ever, so a shared mood pack can never point the
@@ -62,6 +68,8 @@ export function sanitizeProfile(input: unknown): MoodProfile | null {
     breakIntervalMultiplier: typeof input.breakIntervalMultiplier === 'number' && Number.isFinite(input.breakIntervalMultiplier)
       ? clamp(input.breakIntervalMultiplier, 0.2, 3)
       : 1,
+    clickProfile: isClickProfileLocal(input.clickProfile) ? input.clickProfile : 'tick',
+    clickSpeed: typeof input.clickSpeed === 'boolean' ? input.clickSpeed : true,
   };
   if (typeof input.accent === 'string' && HEX.test(input.accent)) {
     profile.accent = input.accent;

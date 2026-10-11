@@ -106,7 +106,9 @@
               "label": "Energetic",
               "minimap": true,
               "theme": "Monokai",
-              "zen": false
+              "zen": false,
+              "clickProfile": "tick",
+              "clickSpeed": true
             },
             "focused": {
               "ambient": "deep",
@@ -117,7 +119,9 @@
               "label": "Focused",
               "minimap": false,
               "theme": "Default Dark Modern",
-              "zen": true
+              "zen": true,
+              "clickProfile": "thock",
+              "clickSpeed": true
             },
             "relaxed": {
               "ambient": "rain",
@@ -128,7 +132,9 @@
               "label": "Relaxed",
               "minimap": true,
               "theme": "Quiet Light",
-              "zen": false
+              "zen": false,
+              "clickProfile": "soft",
+              "clickSpeed": false
             },
             "tired": {
               "ambient": "rain",
@@ -139,7 +145,9 @@
               "label": "Tired",
               "minimap": true,
               "theme": "Default Dark Modern",
-              "zen": false
+              "zen": false,
+              "clickProfile": "soft",
+              "clickSpeed": false
             }
           },
           "description": "Mood profiles. Each mood maps to an icon (target | leaf | moon | bolt), an accent color, a theme, font size, and optional font family, line height, and cursor style \u2014 plus Zen preference, minimap, ambient track (deep | rain | wind | none), and a break-interval multiplier. Edit them visually in the MoodSense panel, or add your own moods by adding keys here.",
@@ -359,6 +367,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.7.0",
+  "version": "0.8.0",
   "icon": "media/icon.png"
 }
