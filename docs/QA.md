@@ -49,3 +49,12 @@ list covers what only a live IDE can prove.
 - [ ] Delete a custom mood (the active one) → mood clears cleanly
 - [ ] Export copies JSON; Import of that JSON round-trips; Import of garbage
       shows the warning and changes nothing
+
+## Review-release checks (0.4.0)
+- [ ] Fresh profile / no mood ever picked: break countdown runs in the panel
+      from startup (default interval), no mood selection needed
+- [ ] Ctrl+Alt+M cycles moods in panel order and wraps; customs included
+- [ ] Set moodsense.ambient.customDirectory to a folder with an .mp3: it shows
+      under "Your audio", plays, and can be assigned to a mood in the editor
+- [ ] A mood saved with a file: track whose file was later deleted fails
+      silently (no crash, hint remains accurate)

@@ -10,6 +10,8 @@ export interface PanelState {
   builtinIds: string[];
   /** Themes installed in this VS Code, for the editor's theme picker. */
   themes: { id: string; label: string }[];
+  /** Audio files found in the user's custom folder ("file:<name>" tokens). */
+  customTracks: { token: string; label: string }[];
   accent: string;
   ambientTrack: AmbientTrack;
   volume: number;

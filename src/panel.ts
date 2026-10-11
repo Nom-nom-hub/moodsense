@@ -16,11 +16,12 @@ export interface PanelActions {
   importMoods(): Promise<void>;
 }
 
-const TRACK_FILES: Record<Exclude<AmbientTrack, 'none'>, string> = {
-  deep: 'deep.ogg',
-  rain: 'rain.ogg',
-  wind: 'wind.ogg',
-};
+export interface AudioHooks {
+  /** Resolve a track (built-in or "file:<name>") to a playable URI. */
+  uriFor(track: AmbientTrack): vscode.Uri | null;
+  /** Folders the webview may load audio from. */
+  roots(): vscode.Uri[];
+}
 
 interface PanelMessage {
   type: string;
@@ -46,18 +47,21 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private view: vscode.WebviewView | undefined;
   private state: PanelState | null = null;
+  private rootsKey = '';
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly actions: PanelActions,
+    private readonly audio: AudioHooks,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
+      localResourceRoots: this.audio.roots(),
     };
+    this.rootsKey = this.audio.roots().map((u) => u.toString()).join('|');
     view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage((msg: PanelMessage) => {
       void this.onMessage(msg);
@@ -84,14 +88,20 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (!this.view || !this.state) {
       return;
     }
+    // The custom-audio folder can change while the panel lives; keep the
+    // webview's allowed roots current so new files are loadable.
+    const roots = this.audio.roots();
+    const key = roots.map((u) => u.toString()).join('|');
+    if (key !== this.rootsKey) {
+      this.rootsKey = key;
+      this.view.webview.options = { enableScripts: true, localResourceRoots: roots };
+    }
     void this.view.webview.postMessage({ type: 'state', state: this.state });
-    if (this.state.ambientTrack === 'none') {
+    const uri = this.audio.uriFor(this.state.ambientTrack);
+    if (!uri) {
       void this.view.webview.postMessage({ type: 'audioPause' });
     } else {
-      const file = TRACK_FILES[this.state.ambientTrack];
-      const src = this.view.webview
-        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'audio', file))
-        .toString();
+      const src = this.view.webview.asWebviewUri(uri).toString();
       void this.view.webview.postMessage({
         type: 'audio',
         src,
@@ -222,6 +232,10 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
   .seg button:hover { color: var(--ink); }
   .seg button.active { background: color-mix(in srgb, var(--ink) 11%, transparent); color: var(--ink); font-weight: 600; }
+  .seg.wrap { flex-wrap: wrap; }
+  .seg.wrap button { flex: 0 1 auto; padding: 5px 10px; }
+  #f-ambient { flex-wrap: wrap; }
+  #f-ambient button { flex: 0 1 auto; padding: 5px 10px; }
   .transport { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .play {
     appearance: none; cursor: pointer; flex: none;
@@ -325,6 +339,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   <div class="label">Ambient</div>
   <div class="seg" id="trackSeg"></div>
+  <div class="hint hidden" id="customLabel" style="margin: 10px 0 6px;">Your audio</div>
+  <div class="seg wrap hidden" id="customSeg"></div>
   <div class="transport">
     <button class="play" id="playBtn" title="Play or pause the soundscape"></button>
     <input type="range" id="volume" min="0" max="1" step="0.01" value="0.7" aria-label="Ambient volume" />
@@ -445,6 +461,14 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       const inner = ICONS[name] || ICONS.dot;
       return '<svg viewBox="0 0 24 24">' + inner + '</svg>';
     }
+    function trackLabel(token) {
+      if (token === 'none') return 'Silent';
+      if (token.startsWith('file:')) {
+        const found = state && state.customTracks.find((t) => t.token === token);
+        return found ? found.label : token.slice(5);
+      }
+      return token[0].toUpperCase() + token.slice(1);
+    }
 
     function render() {
       if (!state) return;
@@ -469,7 +493,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         row.innerHTML = '<span class="ic"></span><span class="txt"><span class="name"></span><span class="sub"></span></span><button class="edit" title="Edit mood"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button><span class="on"></span>';
         row.querySelector('.ic').innerHTML = svgIcon(p.icon);
         row.querySelector('.name').textContent = p.label;
-        row.querySelector('.sub').textContent = p.theme + ' · ' + p.fontSize + 'px · ' + (p.ambient === 'none' ? 'Silent' : p.ambient[0].toUpperCase() + p.ambient.slice(1));
+        row.querySelector('.sub').textContent = p.theme + ' · ' + p.fontSize + 'px · ' + trackLabel(p.ambient);
         row.addEventListener('click', () => vscode.postMessage({ type: 'setMood', id }));
         row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vscode.postMessage({ type: 'setMood', id }); } });
         row.querySelector('.edit').addEventListener('click', (e) => { e.stopPropagation(); openEditor(id); });
@@ -484,6 +508,21 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         b.textContent = label;
         b.addEventListener('click', () => vscode.postMessage({ type: 'track', track }));
         seg.appendChild(b);
+      }
+      const customSeg = document.getElementById('customSeg');
+      const customLabel = document.getElementById('customLabel');
+      customSeg.innerHTML = '';
+      const hasCustom = state.customTracks && state.customTracks.length > 0;
+      customSeg.classList.toggle('hidden', !hasCustom);
+      customLabel.classList.toggle('hidden', !hasCustom);
+      if (hasCustom) {
+        for (const t of state.customTracks) {
+          const b = document.createElement('button');
+          b.className = state.ambientTrack === t.token ? 'active' : '';
+          b.textContent = t.label;
+          b.addEventListener('click', () => vscode.postMessage({ type: 'track', track: t.token }));
+          customSeg.appendChild(b);
+        }
       }
       document.getElementById('volume').value = state.volume;
       tick();
@@ -610,7 +649,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
       const amb = document.getElementById('f-ambient');
       amb.innerHTML = '';
-      for (const [track, label] of TRACKS) {
+      const ambChoices = [...TRACKS, ...(state.customTracks || []).map((t) => [t.token, t.label])];
+      for (const [track, label] of ambChoices) {
         const b = document.createElement('button');
         b.className = selAmbient === track ? 'active' : '';
         b.textContent = label;

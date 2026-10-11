@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export type AmbientTrack = 'deep' | 'rain' | 'wind' | 'none';
+export type AmbientTrack = 'deep' | 'rain' | 'wind' | 'none' | `file:${string}`;
 
 export type CursorStyle = 'line' | 'block' | 'underline' | 'line-thin' | 'block-outline' | 'underline-thin';
 

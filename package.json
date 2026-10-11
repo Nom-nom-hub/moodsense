@@ -61,6 +61,10 @@
       {
         "command": "moodsense.resetMoods",
         "title": "MoodSense: Reset Moods to Defaults"
+      },
+      {
+        "command": "moodsense.cycleMood",
+        "title": "MoodSense: Cycle Mood"
       }
     ],
     "configuration": {
@@ -136,6 +140,11 @@
           },
           "description": "Mood profiles. Each mood maps to an icon (target | leaf | moon | bolt), an accent color, a theme, font size, and optional font family, line height, and cursor style \u2014 plus Zen preference, minimap, ambient track (deep | rain | wind | none), and a break-interval multiplier. Edit them visually in the MoodSense panel, or add your own moods by adding keys here.",
           "type": "object"
+        },
+        "moodsense.ambient.customDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Folder with your own ambient audio files (.ogg, .mp3, .wav, .m4a, .flac). Files found there appear in the panel under \"Your audio\" and can be assigned to moods. Leave empty to use only the built-in soundscapes."
         }
       },
       "title": "MoodSense"
@@ -202,6 +211,13 @@
           }
         ]
       }
+    ],
+    "keybindings": [
+      {
+        "command": "moodsense.cycleMood",
+        "key": "ctrl+alt+m",
+        "mac": "cmd+alt+m"
+      }
     ]
   },
   "description": "Pick your mood; your IDE reshapes itself around it. Theme, font, ambient sound, and focus level adapt to how you work \u2014 100% local, no telemetry, no accounts.",
@@ -239,6 +255,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.3.1",
+  "version": "0.4.0",
   "icon": "media/icon.png"
 }

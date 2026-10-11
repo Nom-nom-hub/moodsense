@@ -6,6 +6,19 @@ import type { AmbientTrack, CursorStyle, MoodProfile } from './moods.js';
  *  allowed to touch their settings. */
 
 const AMBIENT_TRACKS: AmbientTrack[] = ['deep', 'rain', 'wind', 'none'];
+
+/** A custom track token is "file:<name>" where <name> is a bare filename —
+ *  no path separators, ever, so a shared mood pack can never point the
+ *  player outside the user's own audio folder. */
+function isAmbientTrack(x: unknown): x is AmbientTrack {
+  if (typeof x !== 'string') {
+    return false;
+  }
+  if ((AMBIENT_TRACKS as string[]).includes(x)) {
+    return true;
+  }
+  return /^file:[^/\\]+$/.test(x);
+}
 const CURSOR_STYLES: CursorStyle[] = ['line', 'block', 'underline', 'line-thin', 'block-outline', 'underline-thin'];
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
@@ -45,7 +58,7 @@ export function sanitizeProfile(input: unknown): MoodProfile | null {
     fontSize,
     zen: input.zen === true,
     minimap: input.minimap !== false,
-    ambient: AMBIENT_TRACKS.includes(input.ambient as AmbientTrack) ? (input.ambient as AmbientTrack) : 'none',
+    ambient: isAmbientTrack(input.ambient) ? input.ambient : 'none',
     breakIntervalMultiplier: typeof input.breakIntervalMultiplier === 'number' && Number.isFinite(input.breakIntervalMultiplier)
       ? clamp(input.breakIntervalMultiplier, 0.2, 3)
       : 1,

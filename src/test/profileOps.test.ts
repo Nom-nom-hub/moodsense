@@ -41,6 +41,14 @@ describe('profile sanitization', () => {
     expect(p?.cursorStyle).toBeUndefined();
   });
 
+  it('accepts a custom audio token but never a path', () => {
+    expect(sanitizeProfile({ ambient: 'file:lofi-beats.mp3' })?.ambient).toBe('file:lofi-beats.mp3');
+    // A mood pack must never point the player outside the user's audio folder:
+    expect(sanitizeProfile({ ambient: 'file:../secret.mp3' })?.ambient).toBe('none');
+    expect(sanitizeProfile({ ambient: 'file:sub/dir.mp3' })?.ambient).toBe('none');
+    expect(sanitizeProfile({ ambient: 'file:C:\\evil.mp3' })?.ambient).toBe('none');
+  });
+
   it('rejects non-objects', () => {
     expect(sanitizeProfile(null)).toBeNull();
     expect(sanitizeProfile('mood')).toBeNull();

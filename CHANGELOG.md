@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0 — 2026-10-11
+
+The code-review release — closing the gaps an external review found (and
+correcting the two that were already closed):
+
+- **Break timer now starts on activation.** Before: it only started when a
+  mood was already saved or first picked, so fresh installs never reminded.
+  Now it runs on its default rhythm from startup; a mood still retunes it.
+- **Your own audio.** Point `moodsense.ambient.customDirectory` at a folder
+  of audio files (.ogg/.mp3/.wav/.m4a/.flac) and they appear in the panel
+  under "Your audio" — playable immediately and assignable to any mood in
+  the editor. Mood packs reference files by bare name only, so a shared
+  pack can never point the player outside your folder.
+- **Cycle Mood command + keybinding** (Ctrl+Alt+M / Cmd+Alt+M): step through
+  your moods — built-ins first, then your customs — without opening anything.
+- **BreakTimer is unit-tested now** (scheduling, multipliers, disabled
+  state, listener notifications), plus path-safety tests for audio tokens.
+- Review follow-ups that were already handled: snapshot refresh on manual
+  config edits has been wired since 0.1.1 (extended to font/line-height/
+  cursor in 0.3.0); ambient autoplay's first-click is a Chromium webview
+  policy no setting can override — clicking a mood inside the panel counts
+  as the gesture, after which retargeting is automatic.
+
+
 ## 0.3.1 — 2026-10-11
 
 - **Save = see it:** creating a mood now applies it the moment you save, and

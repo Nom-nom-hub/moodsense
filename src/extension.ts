@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { DEFAULT_PROFILES, getProfile, getProfiles, type AmbientTrack, type MoodProfile } from './moods.js';
 import { mergeSnapshot, type SettingsSnapshot } from './snapshot.js';
 import { accentFor, type PanelState } from './panelState.js';
@@ -49,6 +51,9 @@ export function activate(context: vscode.ExtensionContext): void {
     resetMood: (id) => resetMood(context, id),
     exportMoods: () => exportMoods(),
     importMoods: () => importMoods(context),
+  }, {
+    uriFor: (track) => audioUriFor(context.extensionUri, track),
+    roots: () => audioRoots(context.extensionUri),
   });
   breaks.onStateChange = () => pushState(context);
 
@@ -75,6 +80,7 @@ export function activate(context: vscode.ExtensionContext): void {
       pushState(context);
     }),
     vscode.commands.registerCommand('moodsense.resetBreakTimer', () => breaks.reset()),
+    vscode.commands.registerCommand('moodsense.cycleMood', () => cycleMood(context)),
     vscode.commands.registerCommand('moodsense.exportMoods', () => exportMoods()),
     vscode.commands.registerCommand('moodsense.importMoods', () => importMoods(context)),
     vscode.commands.registerCommand('moodsense.resetMoods', async () => {
@@ -117,7 +123,14 @@ export function activate(context: vscode.ExtensionContext): void {
     if (profile) {
       ambientOverride = profile.ambient;
       breaks.setMultiplier(profile.breakIntervalMultiplier);
+    } else {
+      breaks.start();
     }
+  } else {
+    // No mood restored (fresh install, or after Off): the break timer still
+    // runs on its default rhythm. Reminders must never depend on having
+    // picked a mood first — that was the v0.3.x first-run gap.
+    breaks.start();
   }
   pushState(context);
   statusBar.show();
@@ -137,6 +150,7 @@ function buildState(context: vscode.ExtensionContext): PanelState {
     profiles,
     builtinIds: Object.keys(DEFAULT_PROFILES),
     themes: installedThemes(),
+    customTracks: listCustomTracks(),
     accent: accentFor(currentMood, currentMood ? profiles[currentMood] : undefined),
     ambientTrack: ambientOverride,
     volume: cfg.get<number>('ambient.volume', 0.7),
@@ -171,6 +185,98 @@ function installedThemes(): { id: string; label: string }[] {
 
 function pushState(context: vscode.ExtensionContext): void {
   panel.update(buildState(context));
+}
+
+/** Panel order: built-ins first in their canonical sequence, then customs
+ *  alphabetically. Shared by the panel (via profile order in state) and the
+ *  cycle command. */
+const MOOD_ORDER = ['focused', 'relaxed', 'tired', 'energetic'];
+
+function orderedMoodIds(profiles: Record<string, MoodProfile>): string[] {
+  return Object.keys(profiles).sort((a, b) => {
+    const ia = MOOD_ORDER.indexOf(a);
+    const ib = MOOD_ORDER.indexOf(b);
+    const ra = ia === -1 ? 99 : ia;
+    const rb = ib === -1 ? 99 : ib;
+    return ra - rb || a.localeCompare(b);
+  });
+}
+
+/** Advance to the next mood (wrapping). Bound to a keybinding so switching
+ *  never requires opening the panel or the picker. */
+async function cycleMood(context: vscode.ExtensionContext): Promise<void> {
+  const profiles = getProfiles();
+  const ids = orderedMoodIds(profiles);
+  if (ids.length === 0) {
+    return;
+  }
+  const current = context.globalState.get<string>(STATE_MOOD);
+  const idx = current ? ids.indexOf(current) : -1;
+  const next = ids[(idx + 1) % ids.length];
+  await applyMood(context, next);
+}
+
+/* ------------------------------ custom audio ----------------------------- */
+
+const AUDIO_EXTENSIONS = new Set(['.ogg', '.mp3', '.wav', '.m4a', '.flac']);
+const BUILTIN_TRACK_FILES: Record<string, string> = {
+  deep: 'deep.ogg',
+  rain: 'rain.ogg',
+  wind: 'wind.ogg',
+};
+
+function customAudioDir(): string {
+  return vscode.workspace
+    .getConfiguration('moodsense')
+    .get<string>('ambient.customDirectory', '')
+    .trim();
+}
+
+/** Audio files in the user's own folder, as panel-ready track entries.
+ *  Tokens are "file:<name>" — the name is a bare filename by construction. */
+function listCustomTracks(): { token: string; label: string }[] {
+  const dir = customAudioDir();
+  if (!dir) {
+    return [];
+  }
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => AUDIO_EXTENSIONS.has(path.extname(n).toLowerCase()))
+    .sort((a, b) => a.localeCompare(b))
+    .map((n) => ({ token: `file:${n}`, label: n.replace(/\.[^.]+$/, '') }));
+}
+
+/** Resolve any track to a playable URI (for the panel's webview). */
+function audioUriFor(extensionUri: vscode.Uri, track: AmbientTrack): vscode.Uri | null {
+  if (track === 'none') {
+    return null;
+  }
+  if (track.startsWith('file:')) {
+    const dir = customAudioDir();
+    const name = track.slice('file:'.length);
+    if (!dir || name.includes('/') || name.includes('\\')) {
+      return null;
+    }
+    return vscode.Uri.file(path.join(dir, name));
+  }
+  const file = BUILTIN_TRACK_FILES[track];
+  return file ? vscode.Uri.joinPath(extensionUri, 'media', 'audio', file) : null;
+}
+
+/** Folders the panel webview may load audio from: our media + the user's
+ *  custom folder (when set). */
+function audioRoots(extensionUri: vscode.Uri): vscode.Uri[] {
+  const roots = [vscode.Uri.joinPath(extensionUri, 'media')];
+  const dir = customAudioDir();
+  if (dir) {
+    roots.push(vscode.Uri.file(dir));
+  }
+  return roots;
 }
 
 async function pickMood(context: vscode.ExtensionContext): Promise<void> {

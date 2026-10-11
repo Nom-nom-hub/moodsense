@@ -57,7 +57,9 @@ MoodSense is built to be owned, not just used:
   (`moodsense.applyLayoutChanges`) or invoke **Focus Mode** yourself. Your IDE
   never rearranges itself uninvited.
 - **Ambient sound** — three generated soundscapes (deep drone, rain, wind)
-  played from the control panel. Generated locally; nothing streams.
+  played from the control panel — or **your own audio**: set
+  `moodsense.ambient.customDirectory` to a folder of audio files and they
+  appear in the panel under "Your audio," ready to play or assign to a mood.
 - **Break reminders** — a plain, honest timer (default 50 min) with Snooze /
   Dismiss / Turn off. The Tired mood shortens the interval automatically.
 
@@ -70,6 +72,7 @@ MoodSense is built to be owned, not just used:
 - `MoodSense: Open Control Panel` / `Stop Ambient Sound`
 - `MoodSense: Reset Break Timer`
 - `MoodSense: Export Moods (JSON to Clipboard)` / `Import Moods (Paste JSON)` / `Reset Moods to Defaults`
+- `MoodSense: Cycle Mood` — step through your moods (Ctrl+Alt+M / Cmd+Alt+M)
 
 ## Privacy
 
@@ -90,7 +93,6 @@ Press `F5` in VS Code to run the extension in a development host.
 
 ## Roadmap (from the PRD)
 
-- More soundscapes + user-supplied audio
 - Per-workspace moods
 - JetBrains support
 - Biometrics: **not promised.** There is no reliable real-time path from
