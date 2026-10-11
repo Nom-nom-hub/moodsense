@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 — 2026-10-11
+
+The design release — MoodSense gets a face:
+
+- **Control panel** in the Activity Bar: mood cards with per-mood signature colors that re-theme the whole panel, ambient transport (track chips, play/pause, volume), and a live break countdown with progress bar
+- **Brand system:** activity-bar icon, marketplace icon, and a getting-started walkthrough (first mood → panel tour → snapshot safety → customize profiles)
+- Ambient playback moved into the panel (single surface); the standalone player panel is gone
+- Break timer now exposes its schedule so the panel countdown is live
+- 13 unit tests (4 new for the panel state helpers)
+
+
 ## 0.1.1 — 2026-10-11
 
 Phase 1 hardening:

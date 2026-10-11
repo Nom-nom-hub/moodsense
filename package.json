@@ -1,6 +1,8 @@
 {
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onView:moodsense.panel",
+    "onWalkthrough:moodsense.gettingStarted"
   ],
   "categories": [
     "Other",
@@ -38,7 +40,7 @@
       },
       {
         "command": "moodsense.openAmbient",
-        "title": "MoodSense: Open Ambient Player"
+        "title": "MoodSense: Open Control Panel"
       },
       {
         "command": "moodsense.stopAmbient",
@@ -121,7 +123,70 @@
         }
       },
       "title": "MoodSense"
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "moodsense",
+          "title": "MoodSense",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "moodsense": [
+        {
+          "type": "webview",
+          "id": "moodsense.panel",
+          "name": "Control Panel"
+        }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "moodsense.gettingStarted",
+        "title": "Get started with MoodSense",
+        "description": "Set your first mood and make the IDE yours.",
+        "steps": [
+          {
+            "id": "pick-first-mood",
+            "title": "Pick your first mood",
+            "description": "MoodSense reshapes your theme, font, and soundscape around how you are working.\n[Set a mood](command:moodsense.pickMood)",
+            "media": {
+              "image": "media/walkthrough.svg",
+              "altText": "MoodSense mood orbs"
+            }
+          },
+          {
+            "id": "panel",
+            "title": "Meet the control panel",
+            "description": "The MoodSense icon in the Activity Bar opens your control panel: mood cards, ambient sound, and your break countdown in one place.\n[Open the panel](command:moodsense.panel.focus)",
+            "media": {
+              "image": "media/walkthrough.svg",
+              "altText": "MoodSense control panel"
+            }
+          },
+          {
+            "id": "your-setup-is-safe",
+            "title": "Your setup is safe",
+            "description": "Before MoodSense changes anything, it snapshots your theme, font, and minimap. Turning MoodSense off restores them exactly \u2014 and layout changes (Zen, minimap) never happen unless you opt in or invoke Focus Mode.\n[Turn MoodSense off](command:moodsense.off)",
+            "media": {
+              "image": "media/walkthrough.svg",
+              "altText": "Snapshot and restore"
+            }
+          },
+          {
+            "id": "make-it-yours",
+            "title": "Make it yours",
+            "description": "Every mood is a profile in settings: theme, font size, ambient track, break rhythm. Edit them, or invent moods of your own.\n[Open settings](command:workbench.action.openSettings?%5B%22moodsense.profiles%22%5D)",
+            "media": {
+              "image": "media/walkthrough.svg",
+              "altText": "Mood profiles in settings"
+            }
+          }
+        ]
+      }
+    ]
   },
   "description": "Pick your mood; your IDE reshapes itself around it. Theme, font, ambient sound, and focus level adapt to how you work \u2014 100% local, no telemetry, no accounts.",
   "devDependencies": {
@@ -151,12 +216,13 @@
   "name": "moodsense",
   "publisher": "nom-nom-hub",
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && tsc -p ./",
     "package": "vsce package",
     "vscode:prepublish": "npm run compile",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.1.1"
+  "version": "0.2.0",
+  "icon": "media/icon.png"
 }

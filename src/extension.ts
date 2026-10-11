@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { getProfile, getProfiles, type MoodProfile } from './moods.js';
+import { getProfile, getProfiles, type AmbientTrack, type MoodProfile } from './moods.js';
 import { mergeSnapshot, type SettingsSnapshot } from './snapshot.js';
-import { AmbientPlayer } from './ambient.js';
+import { accentFor, type PanelState } from './panelState.js';
+import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
 
 const STATE_MOOD = 'moodsense.currentMood';
@@ -9,8 +10,12 @@ const STATE_SNAPSHOT = 'moodsense.snapshot';
 const STATE_ZEN_ON = 'moodsense.zenOn';
 
 let statusBar: vscode.StatusBarItem;
-let ambient: AmbientPlayer;
+let panel: MoodPanelProvider;
 let breaks: BreakTimer;
+
+/** The ambient track currently in effect — the active mood's track, unless
+ *  the user overrode it from the panel's chips. */
+let ambientOverride: AmbientTrack = 'none';
 
 /** MoodSense's own configuration writes also fire onDidChangeConfiguration.
  *  This timestamp marks a short window after our writes during which config
@@ -21,14 +26,34 @@ function markApplying(): void {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  ambient = new AmbientPlayer(context.extensionUri);
   breaks = new BreakTimer();
+
+  panel = new MoodPanelProvider(context.extensionUri, {
+    setMood: (id) => applyMood(context, id),
+    turnOff: () => turnOff(context),
+    focusMode: () => focusMode(context),
+    resetBreak: () => breaks.reset(),
+    setVolume: async (volume) => {
+      await vscode.workspace
+        .getConfiguration('moodsense')
+        .update('ambient.volume', volume, vscode.ConfigurationTarget.Global);
+      pushState(context);
+    },
+    setAmbient: (track) => {
+      ambientOverride = track;
+      pushState(context);
+    },
+  });
+  breaks.onStateChange = () => pushState(context);
 
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = 'moodsense.pickMood';
-  context.subscriptions.push(statusBar, ambient, breaks);
+  context.subscriptions.push(statusBar, panel, breaks);
 
   context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(MoodPanelProvider.viewType, panel, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
     vscode.commands.registerCommand('moodsense.pickMood', () => pickMood(context)),
     vscode.commands.registerCommand('moodsense.setFocused', () => applyMood(context, 'focused')),
     vscode.commands.registerCommand('moodsense.setRelaxed', () => applyMood(context, 'relaxed')),
@@ -36,12 +61,20 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('moodsense.setEnergetic', () => applyMood(context, 'energetic')),
     vscode.commands.registerCommand('moodsense.off', () => turnOff(context)),
     vscode.commands.registerCommand('moodsense.focusMode', () => focusMode(context)),
-    vscode.commands.registerCommand('moodsense.openAmbient', () => ambient.open()),
-    vscode.commands.registerCommand('moodsense.stopAmbient', () => ambient.stop()),
+    vscode.commands.registerCommand('moodsense.openAmbient', async () => {
+      await vscode.commands.executeCommand('moodsense.panel.focus');
+    }),
+    vscode.commands.registerCommand('moodsense.stopAmbient', () => {
+      ambientOverride = 'none';
+      pushState(context);
+    }),
     vscode.commands.registerCommand('moodsense.resetBreakTimer', () => breaks.reset()),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('moodsense.breaks')) {
         breaks.reset();
+      }
+      if (e.affectsConfiguration('moodsense.profiles') || e.affectsConfiguration('moodsense.ambient')) {
+        pushState(context);
       }
       const touchesAppearance =
         e.affectsConfiguration('workbench.colorTheme') ||
@@ -64,15 +97,36 @@ export function activate(context: vscode.ExtensionContext): void {
   if (current) {
     const profile = getProfile(current);
     if (profile) {
+      ambientOverride = profile.ambient;
       breaks.setMultiplier(profile.breakIntervalMultiplier);
     }
   }
+  pushState(context);
   statusBar.show();
 }
 
 export function deactivate(): void {
   // Intentionally does NOT restore settings on shutdown: the user's chosen
   // mood persists across sessions. "MoodSense: Off" is the restore path.
+}
+
+function buildState(context: vscode.ExtensionContext): PanelState {
+  const cfg = vscode.workspace.getConfiguration('moodsense');
+  const currentMood = context.globalState.get<string>(STATE_MOOD) ?? null;
+  return {
+    currentMood,
+    profiles: getProfiles(),
+    accent: accentFor(currentMood),
+    ambientTrack: ambientOverride,
+    volume: cfg.get<number>('ambient.volume', 0.7),
+    breaksEnabled: cfg.get<boolean>('breaks.enabled', true),
+    nextBreakAt: breaks.nextFireAt,
+    breakTotalSeconds: Math.round(breaks.lastDurationMs / 1000),
+  };
+}
+
+function pushState(context: vscode.ExtensionContext): void {
+  panel.update(buildState(context));
 }
 
 async function pickMood(context: vscode.ExtensionContext): Promise<void> {
@@ -86,14 +140,21 @@ async function pickMood(context: vscode.ExtensionContext): Promise<void> {
   );
   items.push(
     {
-      label: '$(circle-slash) Off',
-      description: 'Restore the setup you had before MoodSense',
-      action: () => turnOff(context),
+      label: '$(layout) Control Panel',
+      description: 'Open the MoodSense panel',
+      action: async () => {
+        await vscode.commands.executeCommand('moodsense.panel.focus');
+      },
     },
     {
       label: '$(eye-closed) Focus Mode',
       description: 'Zen + minimap off + ambient on, whatever the mood',
       action: () => focusMode(context),
+    },
+    {
+      label: '$(circle-slash) Off',
+      description: 'Restore the setup you had before MoodSense',
+      action: () => turnOff(context),
     },
   );
   const picked = await vscode.window.showQuickPick(items, {
@@ -129,10 +190,11 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
     await setZen(context, profile.zen);
   }
 
-  await ambient.setTrack(profile.ambient);
+  ambientOverride = profile.ambient;
   breaks.setMultiplier(profile.breakIntervalMultiplier);
   await context.globalState.update(STATE_MOOD, moodId);
   updateStatusBar(moodId, profile);
+  pushState(context);
 }
 
 async function turnOff(context: vscode.ExtensionContext): Promise<void> {
@@ -152,11 +214,12 @@ async function turnOff(context: vscode.ExtensionContext): Promise<void> {
   if (context.globalState.get<boolean>(STATE_ZEN_ON)) {
     await setZen(context, false);
   }
-  ambient.stop();
+  ambientOverride = 'none';
   breaks.stop();
   await context.globalState.update(STATE_MOOD, undefined);
   await context.globalState.update(STATE_SNAPSHOT, undefined);
   updateStatusBar(undefined);
+  pushState(context);
   void vscode.window.showInformationMessage('MoodSense is off. Your original setup is restored.');
 }
 
@@ -167,9 +230,10 @@ async function focusMode(context: vscode.ExtensionContext): Promise<void> {
   markApplying();
   await setMinimap(false);
   await setZen(context, true);
-  if (ambient.track === 'none') {
-    await ambient.setTrack('deep');
+  if (ambientOverride === 'none') {
+    ambientOverride = 'deep';
   }
+  pushState(context);
   void vscode.window.showInformationMessage('MoodSense Focus Mode on. Run "MoodSense: Off" to restore.');
 }
 
