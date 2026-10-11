@@ -74,6 +74,22 @@ MoodSense is built to be owned, not just used:
 - `MoodSense: Export Moods (JSON to Clipboard)` / `Import Moods (Paste JSON)` / `Reset Moods to Defaults`
 - `MoodSense: Cycle Mood` — step through your moods (Ctrl+Alt+M / Cmd+Alt+M)
 
+## It runs itself, politely
+
+- **Schedule** — `moodsense.schedule` + `schedule.enabled`: moods switch at
+  time boundaries (Energetic at 09:00, Tired at 18:00). Only at boundaries —
+  pick a mood by hand mid-window and it stands until the next one.
+- **Quiet hours** — `moodsense.quietHours`: sound mutes and reminders wait
+  until the window ends.
+- **Pomodoro** — `moodsense.pomodoro.enabled`: 25/5 focus cycles on the
+  timer; the soundscape pauses during breaks.
+- **Layered sound** — every mood can carry a second track underneath
+  (rain + deep drone), and all changes crossfade.
+- **This week** — the panel charts your last 7 days of mood time from a
+  local session log. Yours alone; clear it any time.
+- **Routines** — `moodsense.routines`: named one-click composites in the
+  panel ("Good morning", "Deep work" + Focus Mode).
+
 ## Privacy
 
 MoodSense stores exactly two things, both in VS Code's own local global
@@ -94,6 +110,8 @@ Press `F5` in VS Code to run the extension in a development host.
 ## Roadmap (from the PRD)
 
 - Per-workspace moods
+- Not planned, because the platform can't: call detection, OS
+  Do-Not-Disturb sync, and battery state have no VS Code extension APIs
 - JetBrains support
 - Biometrics: **not promised.** There is no reliable real-time path from
   consumer health platforms into a desktop IDE extension today; if that

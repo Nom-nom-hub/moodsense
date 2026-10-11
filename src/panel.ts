@@ -9,6 +9,8 @@ export interface PanelActions {
   resetBreak(): void;
   setVolume(volume: number): Promise<void>;
   setAmbient(track: AmbientTrack): void;
+  setLayer(track: AmbientTrack): void;
+  runRoutine(name: string): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
   deleteMood(id: string): Promise<void>;
   resetMood(id: string): Promise<void>;
@@ -29,6 +31,7 @@ interface PanelMessage {
   value?: number;
   track?: AmbientTrack;
   profile?: unknown;
+  name?: string;
 }
 
 /** The MoodSense control panel: a WebviewView in the Activity Bar.
@@ -97,18 +100,26 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       this.view.webview.options = { enableScripts: true, localResourceRoots: roots };
     }
     void this.view.webview.postMessage({ type: 'state', state: this.state });
-    const uri = this.audio.uriFor(this.state.ambientTrack);
-    if (!uri) {
-      void this.view.webview.postMessage({ type: 'audioPause' });
-    } else {
-      const src = this.view.webview.asWebviewUri(uri).toString();
-      void this.view.webview.postMessage({
-        type: 'audio',
-        src,
-        volume: this.state.volume,
-        track: this.state.ambientTrack,
-      });
+    this.pushAudio('primary', this.state.ambientTrack, this.state.volume);
+    this.pushAudio('layer', this.state.ambientLayer, this.state.volume * 0.55);
+  }
+
+  private pushAudio(slot: 'primary' | 'layer', track: AmbientTrack, volume: number): void {
+    if (!this.view) {
+      return;
     }
+    const uri = this.audio.uriFor(track);
+    if (!uri) {
+      void this.view.webview.postMessage({ type: 'audioStop', slot });
+      return;
+    }
+    void this.view.webview.postMessage({
+      type: 'audio',
+      slot,
+      src: this.view.webview.asWebviewUri(uri).toString(),
+      volume,
+      track,
+    });
   }
 
   private async onMessage(msg: PanelMessage): Promise<void> {
@@ -138,6 +149,16 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'track':
         if (msg.track) {
           this.actions.setAmbient(msg.track);
+        }
+        break;
+      case 'layer':
+        if (msg.track) {
+          this.actions.setLayer(msg.track);
+        }
+        break;
+      case 'runRoutine':
+        if (msg.name) {
+          await this.actions.runRoutine(msg.name);
         }
         break;
       case 'saveMood':
@@ -234,8 +255,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   .seg button.active { background: color-mix(in srgb, var(--ink) 11%, transparent); color: var(--ink); font-weight: 600; }
   .seg.wrap { flex-wrap: wrap; }
   .seg.wrap button { flex: 0 1 auto; padding: 5px 10px; }
-  #f-ambient { flex-wrap: wrap; }
-  #f-ambient button { flex: 0 1 auto; padding: 5px 10px; }
+  #f-ambient, #f-layer { flex-wrap: wrap; }
+  #f-ambient button, #f-layer button { flex: 0 1 auto; padding: 5px 10px; }
   .transport { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .play {
     appearance: none; cursor: pointer; flex: none;
@@ -268,6 +289,21 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   .btn.ghost:hover { color: var(--ink); border-color: var(--muted); }
   .foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); text-align: center; }
   .foot .linkish { font-size: 10px; }
+  .sched { font-size: 11px; color: var(--muted); margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+  .sched::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: none; }
+  .rrow { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rbtn {
+    appearance: none; cursor: pointer; border: 1px solid var(--line); background: transparent;
+    color: var(--ink); border-radius: 99px; padding: 5px 12px; font-size: 11.5px; font-weight: 550;
+    transition: border-color .12s ease, background .12s ease;
+  }
+  .rbtn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .wrow { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .wrow .wname { width: 86px; flex: none; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wrow .wbar { flex: 1; height: 3px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .wrow .wbar > div { height: 100%; border-radius: 99px; }
+  .wrow .wtime { width: 52px; flex: none; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .empty { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
 
   .labelrow { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 0 8px; }
   .labelrow .label { margin: 0; }
@@ -331,28 +367,40 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   </div>
 
   <div id="listView">
+  <div class="sched hidden" id="schedLabel"></div>
   <div class="labelrow">
     <span class="label">Mood</span>
     <button class="mini" id="newMood">+ New mood</button>
   </div>
   <div class="rows" id="moodRows"></div>
 
+  <div class="hidden" id="routinesWrap">
+    <div class="label">Routines</div>
+    <div class="rrow" id="routinesRow"></div>
+  </div>
+
   <div class="label">Ambient</div>
+  <div class="hint hidden" id="quietNote" style="margin-bottom: 8px;">Quiet hours — sound and reminders are paused until the window ends.</div>
   <div class="seg" id="trackSeg"></div>
   <div class="hint hidden" id="customLabel" style="margin: 10px 0 6px;">Your audio</div>
   <div class="seg wrap hidden" id="customSeg"></div>
+  <div class="hint" style="margin: 10px 0 6px;">Layer · a second sound underneath</div>
+  <div class="seg wrap" id="layerSeg"></div>
   <div class="transport">
     <button class="play" id="playBtn" title="Play or pause the soundscape"></button>
     <input type="range" id="volume" min="0" max="1" step="0.01" value="0.7" aria-label="Ambient volume" />
   </div>
   <div class="hint" id="audioHint">Sound plays from this panel. The first time, press play once.</div>
 
-  <div class="label">Break</div>
+  <div class="label" id="breakLabel">Break</div>
   <div class="breakrow">
     <div class="count" id="countdown">—</div>
     <button class="linkish" id="resetBreak">Reset timer</button>
   </div>
   <div class="bar"><div id="breakBar" style="width: 0%"></div></div>
+
+  <div class="label">This week</div>
+  <div id="weekRows"></div>
 
   <div class="actions">
     <button class="btn primary" id="focusBtn">Focus Mode</button>
@@ -390,6 +438,10 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div class="field">
       <span class="flabel">Ambient</span>
       <div class="seg" id="f-ambient"></div>
+    </div>
+    <div class="field">
+      <span class="flabel">Ambient layer · optional</span>
+      <div class="seg" id="f-layer"></div>
     </div>
     <div class="field">
       <span class="flabel">Break rhythm · <span class="fval" id="f-breaks-val"></span></span>
@@ -434,6 +486,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   </div>
 
   <audio id="player" loop preload="auto"></audio>
+  <audio id="player2" loop preload="auto"></audio>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -444,11 +497,59 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6.4" y="5" width="3.8" height="14" rx="1.1"/><rect x="13.8" y="5" width="3.8" height="14" rx="1.1"/></svg>';
     const TRACKS = [['deep', 'Deep'], ['rain', 'Rain'], ['wind', 'Wind'], ['none', 'Off']];
     const ORDER = ['focused', 'relaxed', 'tired', 'energetic'];
-    const player = document.getElementById('player');
+    const els = { primary: document.getElementById('player'), layer: document.getElementById('player2') };
     const playBtn = document.getElementById('playBtn');
     let state = null;
-    let playing = false;
+    let wantsPlay = true;
+    let baseVolume = 0.7;
     playBtn.innerHTML = PLAY;
+
+    /* Crossfade engine: track changes fade out (600ms), swap, fade in —
+     * ambient sound should never cut like a notification. */
+    const fadeTimers = new Map();
+    function ramp(el, to, done) {
+      const key = el.id;
+      if (fadeTimers.has(key)) clearInterval(fadeTimers.get(key));
+      const from = el.volume;
+      const steps = 12;
+      let i = 0;
+      const iv = setInterval(() => {
+        i++;
+        el.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps)));
+        if (i >= steps) {
+          clearInterval(iv);
+          fadeTimers.delete(key);
+          if (done) done();
+        }
+      }, 50);
+      fadeTimers.set(key, iv);
+    }
+    function gestureHint() {
+      document.getElementById('audioHint').textContent = 'Press play once — after that, mood changes retarget the sound on their own.';
+    }
+    function setTrack(el, src, vol) {
+      el.dataset.targetVol = String(vol);
+      if (el.dataset.src === src) {
+        if (wantsPlay) {
+          el.play().catch(() => {});
+          ramp(el, vol);
+        }
+        return;
+      }
+      const begin = () => {
+        el.src = src;
+        el.dataset.src = src;
+        el.volume = 0;
+        if (wantsPlay) el.play().catch(gestureHint);
+        ramp(el, vol);
+      };
+      if (el.dataset.src && !el.paused) ramp(el, 0, begin);
+      else begin();
+    }
+    function stopTrack(el) {
+      if (!el.dataset.src) return;
+      ramp(el, 0, () => el.pause());
+    }
 
     function fmt(ms) {
       if (ms <= 0) return 'now';
@@ -524,6 +625,68 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
           customSeg.appendChild(b);
         }
       }
+      const sched = document.getElementById('schedLabel');
+      if (state.scheduleLabel) {
+        sched.textContent = state.scheduleLabel;
+        sched.classList.remove('hidden');
+      } else {
+        sched.classList.add('hidden');
+      }
+
+      const rwrap = document.getElementById('routinesWrap');
+      const rrow = document.getElementById('routinesRow');
+      rrow.innerHTML = '';
+      if (state.routines && state.routines.length > 0) {
+        rwrap.classList.remove('hidden');
+        for (const r of state.routines) {
+          const b = document.createElement('button');
+          b.className = 'rbtn';
+          b.textContent = r.name;
+          b.addEventListener('click', () => vscode.postMessage({ type: 'runRoutine', name: r.name }));
+          rrow.appendChild(b);
+        }
+      } else {
+        rwrap.classList.add('hidden');
+      }
+
+      document.getElementById('quietNote').classList.toggle('hidden', !state.quietActive);
+
+      const lseg = document.getElementById('layerSeg');
+      lseg.innerHTML = '';
+      const layerChoices = [['none', 'Off'], ['deep', 'Deep'], ['rain', 'Rain'], ['wind', 'Wind'],
+        ...(state.customTracks || []).map((t) => [t.token, t.label])];
+      for (const [track, label] of layerChoices) {
+        const b = document.createElement('button');
+        b.className = state.ambientLayer === track ? 'active' : '';
+        b.textContent = label;
+        b.addEventListener('click', () => vscode.postMessage({ type: 'layer', track }));
+        lseg.appendChild(b);
+      }
+
+      document.getElementById('breakLabel').textContent =
+        state.timerPhase === 'focus' ? 'Pomodoro · Focus' :
+        state.timerPhase === 'break' ? 'Pomodoro · On break' : 'Break';
+
+      const wk = document.getElementById('weekRows');
+      wk.innerHTML = '';
+      if (!state.week || state.week.length === 0) {
+        wk.innerHTML = '<div class="empty">No mood time logged yet. Set a mood and your week builds itself — stored only on this machine.</div>';
+      } else {
+        for (const w of state.week) {
+          const hue = (state.profiles[w.mood] && state.profiles[w.mood].accent) || ACCENTS[w.mood] || IDLE;
+          const row = document.createElement('div');
+          row.className = 'wrow';
+          row.innerHTML = '<span class="wname"></span><span class="wbar"><div></div></span><span class="wtime"></span>';
+          row.querySelector('.wname').textContent = w.label;
+          const bar = row.querySelector('.wbar > div');
+          bar.style.width = Math.round(w.fraction * 100) + '%';
+          bar.style.background = hue;
+          row.querySelector('.wtime').textContent = w.durationLabel;
+          wk.appendChild(row);
+        }
+      }
+
+      baseVolume = state.volume;
       document.getElementById('volume').value = state.volume;
       tick();
     }
@@ -545,16 +708,32 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     setInterval(tick, 1000);
 
     playBtn.addEventListener('click', () => {
-      if (playing) player.pause(); else player.play().catch(() => {});
+      wantsPlay = !wantsPlay;
+      for (const el of [els.primary, els.layer]) {
+        if (!el.dataset.src) continue;
+        if (wantsPlay) {
+          el.play().catch(() => {});
+          ramp(el, parseFloat(el.dataset.targetVol || '0.7'));
+        } else {
+          ramp(el, 0, () => el.pause());
+        }
+      }
+      playBtn.innerHTML = wantsPlay ? PAUSE : PLAY;
     });
-    player.addEventListener('play', () => { playing = true; playBtn.innerHTML = PAUSE; });
-    player.addEventListener('pause', () => { playing = false; playBtn.innerHTML = PLAY; });
+    els.primary.addEventListener('play', () => { playBtn.innerHTML = PAUSE; });
+    els.primary.addEventListener('pause', () => { if (!wantsPlay) playBtn.innerHTML = PLAY; });
 
     let volTimer;
     document.getElementById('volume').addEventListener('input', (e) => {
-      player.volume = parseFloat(e.target.value);
+      baseVolume = parseFloat(e.target.value);
+      if (wantsPlay) {
+        if (els.primary.dataset.src) ramp(els.primary, baseVolume);
+        if (els.layer.dataset.src) ramp(els.layer, baseVolume * 0.55);
+      }
+      els.primary.dataset.targetVol = String(baseVolume);
+      els.layer.dataset.targetVol = String(baseVolume * 0.55);
       clearTimeout(volTimer);
-      volTimer = setTimeout(() => vscode.postMessage({ type: 'volume', value: parseFloat(e.target.value) }), 200);
+      volTimer = setTimeout(() => vscode.postMessage({ type: 'volume', value: baseVolume }), 200);
     });
     document.getElementById('offBtn').addEventListener('click', () => vscode.postMessage({ type: 'off' }));
     document.getElementById('focusBtn').addEventListener('click', () => vscode.postMessage({ type: 'focus' }));
@@ -569,6 +748,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     let selIcon = 'target';
     let selAccent = SWATCHES[0];
     let selAmbient = 'deep';
+    let selLayer = 'none';
 
     function showEditor(show) {
       document.getElementById('listView').classList.toggle('hidden', show);
@@ -584,6 +764,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       selIcon = p ? p.icon : 'target';
       selAccent = (p && p.accent) || ACCENTS[id] || SWATCHES[0];
       selAmbient = p ? p.ambient : 'deep';
+      selLayer = p && p.ambientLayer ? p.ambientLayer : 'none';
 
       const iconBox = document.getElementById('f-icons');
       iconBox.innerHTML = '';
@@ -662,6 +843,22 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         amb.appendChild(b);
       }
 
+      const lay = document.getElementById('f-layer');
+      lay.innerHTML = '';
+      const layerChoices = [['none', 'Off'], ['deep', 'Deep'], ['rain', 'Rain'], ['wind', 'Wind'],
+        ...(state.customTracks || []).map((t) => [t.token, t.label])];
+      for (const [track, label] of layerChoices) {
+        const b = document.createElement('button');
+        b.className = selLayer === track ? 'active' : '';
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          selLayer = track;
+          lay.querySelectorAll('button').forEach((el) => el.classList.remove('active'));
+          b.classList.add('active');
+        });
+        lay.appendChild(b);
+      }
+
       const br = document.getElementById('f-breaks');
       br.value = p ? p.breakIntervalMultiplier : 1;
       document.getElementById('f-breaks-val').textContent = breaksLabel(parseFloat(br.value));
@@ -714,6 +911,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         zen: document.getElementById('f-zen').checked,
         minimap: document.getElementById('f-minimap').checked,
         ambient: selAmbient,
+        ambientLayer: selLayer !== 'none' ? selLayer : undefined,
         breakIntervalMultiplier: parseFloat(document.getElementById('f-breaks').value),
       };
       vscode.postMessage({ type: 'saveMood', id: editingId, profile });
@@ -726,13 +924,9 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         state = msg.state;
         render();
       } else if (msg.type === 'audio') {
-        if (player.getAttribute('src') !== msg.src) player.src = msg.src;
-        player.volume = msg.volume;
-        player.play().catch(() => {
-          document.getElementById('audioHint').textContent = 'Press play once — after that, mood changes retarget the sound on their own.';
-        });
-      } else if (msg.type === 'audioPause') {
-        player.pause();
+        setTrack(els[msg.slot] || els.primary, msg.src, msg.volume);
+      } else if (msg.type === 'audioStop') {
+        stopTrack(els[msg.slot] || els.primary);
       }
     });
     vscode.postMessage({ type: 'ready' });

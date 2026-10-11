@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0 — 2026-10-11
+
+The "alive" release — MoodSense starts running itself, politely:
+
+- **Time-of-day scheduling** (`moodsense.schedule` + `schedule.enabled`): moods switch at time boundaries — and only at boundaries, so a manual choice mid-window is respected until the next one. The panel shows "On schedule · … until HH:MM"
+- **Quiet hours** (`moodsense.quietHours`): during the window, ambient mutes and reminders silently wait until it ends — no 11pm break buzz
+- **Pomodoro mode** (`moodsense.pomodoro.*`): focus/break phases alternate on the timer, the panel countdown names the phase, and the soundscape pauses while you're on break
+- **Track layering + crossfades:** every mood (and the panel) can run a second soundscape underneath the main one at lower volume; all track changes now crossfade over ~600ms instead of cutting
+- **Mood history:** sessions are logged locally and the panel gains a "This week" view — time per mood over the last 7 days. Nothing leaves the machine; `MoodSense: Clear Mood History` wipes it
+- **Routines** (`moodsense.routines`): one-click composites in the panel ("Good morning" → Energetic; "Deep work" → Focused + Focus Mode)
+- **Status bar tint:** the status-bar item takes the active mood's accent color — state readable at a glance
+
+Noted from the same review, honestly: quick-cycle shipped in 0.4.0 and
+snapshot refresh in 0.1.1. Auto-pause on calls, OS Do-Not-Disturb sync,
+and battery awareness have no VS Code extension API to build on, so they
+are not faked with placebo toggles.
+
+
 ## 0.4.0 — 2026-10-11
 
 The code-review release — closing the gaps an external review found (and

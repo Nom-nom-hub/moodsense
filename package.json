@@ -65,6 +65,10 @@
       {
         "command": "moodsense.cycleMood",
         "title": "MoodSense: Cycle Mood"
+      },
+      {
+        "command": "moodsense.clearHistory",
+        "title": "MoodSense: Clear Mood History"
       }
     ],
     "configuration": {
@@ -145,6 +149,95 @@
           "type": "string",
           "default": "",
           "description": "Folder with your own ambient audio files (.ogg, .mp3, .wav, .m4a, .flac). Files found there appear in the panel under \"Your audio\" and can be assigned to moods. Leave empty to use only the built-in soundscapes."
+        },
+        "moodsense.schedule.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically switch moods by time of day (see moodsense.schedule). A mood is applied when a time boundary is crossed; a manual choice mid-window stands until the next boundary."
+        },
+        "moodsense.schedule": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "string",
+                "description": "\"HH:MM\" 24-hour start of the window"
+              },
+              "mood": {
+                "type": "string",
+                "description": "Mood id to apply"
+              }
+            },
+            "required": [
+              "start",
+              "mood"
+            ]
+          },
+          "description": "Time windows for automatic mood switching, e.g. [{\"start\":\"09:00\",\"mood\":\"energetic\"},{\"start\":\"18:00\",\"mood\":\"tired\"}]. The last window wraps into the next morning."
+        },
+        "moodsense.quietHours": {
+          "type": "object",
+          "default": {
+            "enabled": false,
+            "start": "22:00",
+            "end": "07:00"
+          },
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "start": {
+              "type": "string",
+              "description": "\"HH:MM\""
+            },
+            "end": {
+              "type": "string",
+              "description": "\"HH:MM\" (may wrap past midnight)"
+            }
+          },
+          "description": "During quiet hours, ambient sound is muted and break reminders wait until the window ends."
+        },
+        "moodsense.pomodoro.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run the timer as a Pomodoro cycle: focus blocks and breaks alternate, and the soundscape pauses during breaks."
+        },
+        "moodsense.pomodoro.workMinutes": {
+          "type": "number",
+          "default": 25,
+          "minimum": 1,
+          "description": "Pomodoro focus block length in minutes (the mood break multiplier still applies)."
+        },
+        "moodsense.pomodoro.breakMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Pomodoro break length in minutes."
+        },
+        "moodsense.routines": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "mood": {
+                "type": "string"
+              },
+              "focusMode": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "mood"
+            ]
+          },
+          "description": "One-click routines shown in the panel, e.g. [{\"name\":\"Good morning\",\"mood\":\"energetic\"},{\"name\":\"Deep work\",\"mood\":\"focused\",\"focusMode\":true}]."
         }
       },
       "title": "MoodSense"
@@ -255,6 +348,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.4.0",
+  "version": "0.5.0",
   "icon": "media/icon.png"
 }

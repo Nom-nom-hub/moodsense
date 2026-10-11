@@ -14,6 +14,18 @@ export interface PanelState {
   customTracks: { token: string; label: string }[];
   accent: string;
   ambientTrack: AmbientTrack;
+  /** Second soundscape layered under the main track ('none' = no layer). */
+  ambientLayer: AmbientTrack;
+  /** True while quiet hours are suppressing sound and reminders. */
+  quietActive: boolean;
+  /** Pomodoro phase when Pomodoro is enabled, else null. */
+  timerPhase: 'focus' | 'break' | null;
+  /** e.g. "On schedule · Energetic until 18:00", or null when unscheduled. */
+  scheduleLabel: string | null;
+  /** Last-7-days mood totals for the "This week" view. */
+  week: { mood: string; label: string; seconds: number; fraction: number; durationLabel: string }[];
+  /** One-click routines from settings. */
+  routines: { name: string; mood: string }[];
   volume: number;
   breaksEnabled: boolean;
   /** Epoch ms when the next break fires, or null when no timer is running. */

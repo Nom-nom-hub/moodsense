@@ -23,6 +23,8 @@ export interface MoodProfile {
   zen: boolean;
   minimap: boolean;
   ambient: AmbientTrack;
+  /** Optional second soundscape layered under the main track. */
+  ambientLayer?: AmbientTrack;
   breakIntervalMultiplier: number;
 }
 

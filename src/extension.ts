@@ -4,9 +4,13 @@ import * as path from 'node:path';
 import { DEFAULT_PROFILES, getProfile, getProfiles, type AmbientTrack, type MoodProfile } from './moods.js';
 import { mergeSnapshot, type SettingsSnapshot } from './snapshot.js';
 import { accentFor, type PanelState } from './panelState.js';
-import { sanitizeMoodPack, sanitizeProfile, slugifyMoodId } from './profileOps.js';
+import { sanitizeMoodPack, sanitizeProfile, sanitizeRoutines, slugifyMoodId } from './profileOps.js';
+import { formatTime, isQuiet, quietEndsAt, sanitizeQuietHours, sanitizeSchedule, slotFor, type QuietHours } from './schedule.js';
+import { appendSession, formatDuration, summarizeWeek, type MoodSession } from './history.js';
 import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
+
+const STATE_HISTORY = 'moodsense.history';
 
 const STATE_MOOD = 'moodsense.currentMood';
 const STATE_SNAPSHOT = 'moodsense.snapshot';
@@ -19,6 +23,12 @@ let breaks: BreakTimer;
 /** The ambient track currently in effect — the active mood's track, unless
  *  the user overrode it from the panel's chips. */
 let ambientOverride: AmbientTrack = 'none';
+/** Second layered soundscape (same override model as the main track). */
+let ambientLayerOverride: AmbientTrack = 'none';
+/** When the current mood session began (for the local history log). */
+let sessionStart: number | null = null;
+/** Identity of the schedule slot last applied, for boundary detection. */
+let lastSlotId: string | null = null;
 
 /** MoodSense's own configuration writes also fire onDidChangeConfiguration.
  *  This timestamp marks a short window after our writes during which config
@@ -30,6 +40,7 @@ function markApplying(): void {
 
 export function activate(context: vscode.ExtensionContext): void {
   breaks = new BreakTimer();
+  breaks.quietUntilProvider = () => quietEndsAt(currentQuietHours(), new Date());
 
   panel = new MoodPanelProvider(context.extensionUri, {
     setMood: (id) => applyMood(context, id),
@@ -46,6 +57,11 @@ export function activate(context: vscode.ExtensionContext): void {
       ambientOverride = track;
       pushState(context);
     },
+    setLayer: (track) => {
+      ambientLayerOverride = track;
+      pushState(context);
+    },
+    runRoutine: (name) => runRoutine(context, name),
     saveMood: (id, profile) => saveMood(context, id, profile),
     deleteMood: (id) => deleteMood(context, id),
     resetMood: (id) => resetMood(context, id),
@@ -90,11 +106,21 @@ export function activate(context: vscode.ExtensionContext): void {
       pushState(context);
       void vscode.window.showInformationMessage('MoodSense: moods reset to the built-in set.');
     }),
+    vscode.commands.registerCommand('moodsense.clearHistory', async () => {
+      await context.globalState.update(STATE_HISTORY, []);
+      pushState(context);
+      void vscode.window.showInformationMessage('MoodSense: mood history cleared.');
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('moodsense.breaks')) {
+      if (e.affectsConfiguration('moodsense.breaks') || e.affectsConfiguration('moodsense.pomodoro') || e.affectsConfiguration('moodsense.quietHours')) {
         breaks.reset();
       }
-      if (e.affectsConfiguration('moodsense.profiles') || e.affectsConfiguration('moodsense.ambient')) {
+      if (e.affectsConfiguration('moodsense.schedule')) {
+        // Rebaseline without yanking: the new schedule applies from its
+        // next boundary, not retroactively mid-slot.
+        lastSlotId = slotFor(scheduleEntries(), new Date())?.slotId ?? null;
+      }
+      if (e.affectsConfiguration('moodsense.profiles') || e.affectsConfiguration('moodsense.ambient') || e.affectsConfiguration('moodsense.routines') || e.affectsConfiguration('moodsense.schedule') || e.affectsConfiguration('moodsense.quietHours') || e.affectsConfiguration('moodsense.pomodoro')) {
         pushState(context);
       }
       const touchesAppearance =
@@ -119,9 +145,11 @@ export function activate(context: vscode.ExtensionContext): void {
   const current = context.globalState.get<string>(STATE_MOOD);
   updateStatusBar(current);
   if (current) {
+    sessionStart = Date.now();
     const profile = getProfile(current);
     if (profile) {
       ambientOverride = profile.ambient;
+      ambientLayerOverride = profile.ambientLayer ?? 'none';
       breaks.setMultiplier(profile.breakIntervalMultiplier);
     } else {
       breaks.start();
@@ -132,8 +160,76 @@ export function activate(context: vscode.ExtensionContext): void {
     // picked a mood first — that was the v0.3.x first-run gap.
     breaks.start();
   }
+
+  // Schedule engine: apply a mood when a time boundary is crossed — and
+  // only then, so a manual choice mid-slot is respected until the next
+  // boundary. On activation we baseline (or apply, when nothing is worn).
+  const slot = slotFor(scheduleEntries(), new Date());
+  if (scheduleEnabled() && slot) {
+    lastSlotId = slot.slotId;
+    if (!current) {
+      void applyMood(context, slot.entry.mood);
+    }
+  }
+  const scheduleTimer = setInterval(() => void scheduleTick(context), 30_000);
+  context.subscriptions.push({ dispose: () => clearInterval(scheduleTimer) });
+
   pushState(context);
   statusBar.show();
+}
+
+async function scheduleTick(context: vscode.ExtensionContext): Promise<void> {
+  if (!scheduleEnabled()) {
+    return;
+  }
+  const slot = slotFor(scheduleEntries(), new Date());
+  if (!slot || slot.slotId === lastSlotId) {
+    return;
+  }
+  lastSlotId = slot.slotId;
+  await applyMood(context, slot.entry.mood);
+}
+
+function scheduleEnabled(): boolean {
+  return vscode.workspace.getConfiguration('moodsense').get<boolean>('schedule.enabled', false);
+}
+
+function scheduleEntries() {
+  return sanitizeSchedule(
+    vscode.workspace.getConfiguration('moodsense').get<unknown>('schedule', []),
+  );
+}
+
+function currentQuietHours(): QuietHours {
+  return sanitizeQuietHours(
+    vscode.workspace.getConfiguration('moodsense').get<unknown>('quietHours', undefined),
+  );
+}
+
+/** Close the running mood session into the local history log. */
+async function closeSession(context: vscode.ExtensionContext): Promise<void> {
+  const mood = context.globalState.get<string>(STATE_MOOD);
+  if (sessionStart === null || !mood) {
+    return;
+  }
+  const history = context.globalState.get<MoodSession[]>(STATE_HISTORY, []);
+  const updated = appendSession(history, { mood, start: sessionStart, end: Date.now() }, Date.now());
+  sessionStart = null;
+  await context.globalState.update(STATE_HISTORY, updated);
+}
+
+async function runRoutine(context: vscode.ExtensionContext, name: string): Promise<void> {
+  const routines = sanitizeRoutines(
+    vscode.workspace.getConfiguration('moodsense').get<unknown>('routines', []),
+  );
+  const routine = routines.find((r) => r.name === name);
+  if (!routine) {
+    return;
+  }
+  await applyMood(context, routine.mood);
+  if (routine.focusMode) {
+    await focusMode(context);
+  }
 }
 
 export function deactivate(): void {
@@ -145,6 +241,15 @@ function buildState(context: vscode.ExtensionContext): PanelState {
   const cfg = vscode.workspace.getConfiguration('moodsense');
   const currentMood = context.globalState.get<string>(STATE_MOOD) ?? null;
   const profiles = getProfiles();
+  const quiet = isQuiet(currentQuietHours(), new Date());
+  const pomodoro = cfg.get<boolean>('pomodoro.enabled', false);
+  const onBreakPhase = pomodoro && breaks.phase === 'break';
+  const silent = quiet || onBreakPhase;
+  const slot = scheduleEnabled() ? slotFor(scheduleEntries(), new Date()) : null;
+  const history = context.globalState.get<MoodSession[]>(STATE_HISTORY, []);
+  const weekSource = sessionStart !== null && currentMood
+    ? [...history, { mood: currentMood, start: sessionStart, end: Date.now() }]
+    : history;
   return {
     currentMood,
     profiles,
@@ -152,7 +257,21 @@ function buildState(context: vscode.ExtensionContext): PanelState {
     themes: installedThemes(),
     customTracks: listCustomTracks(),
     accent: accentFor(currentMood, currentMood ? profiles[currentMood] : undefined),
-    ambientTrack: ambientOverride,
+    ambientTrack: silent ? 'none' : ambientOverride,
+    ambientLayer: silent ? 'none' : ambientLayerOverride,
+    quietActive: quiet,
+    timerPhase: pomodoro ? breaks.phase : null,
+    scheduleLabel: slot
+      ? `On schedule · ${profiles[slot.entry.mood]?.label ?? slot.entry.mood} until ${formatTime(slot.nextAtMinutes)}`
+      : null,
+    week: summarizeWeek(weekSource, Date.now()).map((w) => ({
+      mood: w.mood,
+      label: profiles[w.mood]?.label ?? w.mood,
+      seconds: w.seconds,
+      fraction: w.fraction,
+      durationLabel: formatDuration(w.seconds),
+    })),
+    routines: sanitizeRoutines(cfg.get<unknown>('routines', [])).map((r) => ({ name: r.name, mood: r.mood })),
     volume: cfg.get<number>('ambient.volume', 0.7),
     breaksEnabled: cfg.get<boolean>('breaks.enabled', true),
     nextBreakAt: breaks.nextFireAt,
@@ -321,6 +440,7 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
     void vscode.window.showWarningMessage(`MoodSense: unknown mood "${moodId}". Check moodsense.profiles.`);
     return;
   }
+  await closeSession(context);
 
   // Snapshot the user's own setup exactly once, before the first apply, so
   // Off can restore it byte-for-byte.
@@ -349,13 +469,16 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
   }
 
   ambientOverride = profile.ambient;
+  ambientLayerOverride = profile.ambientLayer ?? 'none';
   breaks.setMultiplier(profile.breakIntervalMultiplier);
   await context.globalState.update(STATE_MOOD, moodId);
+  sessionStart = Date.now();
   updateStatusBar(moodId, profile);
   pushState(context);
 }
 
 async function turnOff(context: vscode.ExtensionContext): Promise<void> {
+  await closeSession(context);
   markApplying();
   const snapshot = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
   if (snapshot) {
@@ -376,6 +499,7 @@ async function turnOff(context: vscode.ExtensionContext): Promise<void> {
     await setZen(context, false);
   }
   ambientOverride = 'none';
+  ambientLayerOverride = 'none';
   breaks.stop();
   await context.globalState.update(STATE_MOOD, undefined);
   await context.globalState.update(STATE_SNAPSHOT, undefined);
@@ -419,11 +543,14 @@ function updateStatusBar(moodId: string | undefined, profile?: MoodProfile): voi
   if (!moodId) {
     statusBar.text = 'MoodSense';
     statusBar.tooltip = 'MoodSense is off. Click to set your mood.';
+    statusBar.color = undefined;
     return;
   }
   const p = profile ?? getProfile(moodId);
   statusBar.text = `MoodSense: ${p?.label ?? moodId}`;
   statusBar.tooltip = `MoodSense: ${p?.label ?? moodId}. Click to change mood.`;
+  // Tint the status bar with the mood's accent — state readable at a glance.
+  statusBar.color = accentFor(moodId, p);
 }
 
 async function setWorkbenchTheme(theme: string): Promise<void> {
@@ -505,6 +632,7 @@ async function deleteMood(context: vscode.ExtensionContext, id: string): Promise
   delete profiles[id];
   await persistProfiles(profiles);
   if (context.globalState.get<string>(STATE_MOOD) === id) {
+    await closeSession(context);
     await context.globalState.update(STATE_MOOD, undefined);
     updateStatusBar(undefined);
   }

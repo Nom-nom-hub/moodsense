@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeProfile, sanitizeMoodPack, slugifyMoodId } from '../profileOps.js';
+import { sanitizeProfile, sanitizeMoodPack, sanitizeRoutines, slugifyMoodId } from '../profileOps.js';
 
 describe('profile sanitization', () => {
   it('passes a well-formed profile through, keeping v2 fields', () => {
@@ -79,5 +79,28 @@ describe('slugify', () => {
     expect(slugifyMoodId('Midnight Build')).toBe('midnight-build');
     expect(slugifyMoodId('  Deep  Work!! ')).toBe('deep-work');
     expect(slugifyMoodId('!!!')).toBe('mood');
+  });
+});
+
+describe('routines + ambient layer sanitization', () => {
+  it('keeps valid routines, drops malformed ones', () => {
+    expect(sanitizeRoutines([
+      { name: 'Good morning', mood: 'energetic' },
+      { name: 'Deep work', mood: 'focused', focusMode: true },
+      { name: '', mood: 'x' },
+      { mood: 'x' },
+      'junk',
+    ])).toEqual([
+      { name: 'Good morning', mood: 'energetic', focusMode: false },
+      { name: 'Deep work', mood: 'focused', focusMode: true },
+    ]);
+    expect(sanitizeRoutines('nope')).toEqual([]);
+  });
+
+  it('keeps a valid ambient layer and drops none/invalid ones', () => {
+    expect(sanitizeProfile({ ambientLayer: 'rain' })?.ambientLayer).toBe('rain');
+    expect(sanitizeProfile({ ambientLayer: 'file:a.mp3' })?.ambientLayer).toBe('file:a.mp3');
+    expect(sanitizeProfile({ ambientLayer: 'none' })?.ambientLayer).toBeUndefined();
+    expect(sanitizeProfile({ ambientLayer: 'file:../x.mp3' })?.ambientLayer).toBeUndefined();
   });
 });

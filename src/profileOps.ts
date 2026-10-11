@@ -66,6 +66,9 @@ export function sanitizeProfile(input: unknown): MoodProfile | null {
   if (typeof input.accent === 'string' && HEX.test(input.accent)) {
     profile.accent = input.accent;
   }
+  if (isAmbientTrack(input.ambientLayer) && input.ambientLayer !== 'none') {
+    profile.ambientLayer = input.ambientLayer;
+  }
   if (typeof input.fontFamily === 'string' && input.fontFamily.trim()) {
     profile.fontFamily = input.fontFamily.trim();
   }
@@ -96,4 +99,30 @@ export function sanitizeMoodPack(input: unknown): Record<string, MoodProfile> | 
     }
   }
   return Object.keys(out).length > 0 ? out : null;
+}
+
+export interface MoodRoutine {
+  name: string;
+  mood: string;
+  focusMode: boolean;
+}
+
+/** Routines are one-click composites ("Good morning" → a mood, optionally
+ *  Focus Mode). They live in settings; this validates them before use. */
+export function sanitizeRoutines(input: unknown): MoodRoutine[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const out: MoodRoutine[] = [];
+  for (const item of input) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : null;
+    const mood = typeof item.mood === 'string' && item.mood ? item.mood : null;
+    if (name && mood) {
+      out.push({ name, mood, focusMode: item.focusMode === true });
+    }
+  }
+  return out;
 }

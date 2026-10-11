@@ -58,3 +58,16 @@ list covers what only a live IDE can prove.
       under "Your audio", plays, and can be assigned to a mood in the editor
 - [ ] A mood saved with a file: track whose file was later deleted fails
       silently (no crash, hint remains accurate)
+
+## Alive-release checks (0.5.0)
+- [ ] Schedule on with a window covering now + no mood worn: slot mood applies
+      at startup; manual mid-window change stands; next boundary switches
+- [ ] Quiet hours covering now: ambient silent, panel shows the quiet note,
+      countdown targets the quiet end; reminders resume after
+- [ ] Pomodoro on: countdown labeled Focus, phase flips at workMinutes,
+      ambient pauses during Break phase, resumes after
+- [ ] Layer: set rain under deep — both audible, layer quieter; mood switch
+      crossfades (no hard cut) on both elements
+- [ ] This week: rows appear after a mood session; Clear Mood History empties
+- [ ] Routines from settings render as panel buttons and run
+- [ ] Status bar text is tinted with the active mood's accent
