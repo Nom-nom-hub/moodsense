@@ -71,3 +71,13 @@ list covers what only a live IDE can prove.
 - [ ] This week: rows appear after a mood session; Clear Mood History empties
 - [ ] Routines from settings render as panel buttons and run
 - [ ] Status bar text is tinted with the active mood's accent
+
+## Review-fixes-II checks (0.5.1)
+- [ ] Delete the custom mood you are wearing: theme restores, sound stops,
+      status bar reads off — no half-state
+- [ ] Focus Mode with no mood: status bar reads "MoodSense: Focus Mode"
+- [ ] Import a pack containing "focused": modal prompt appears; Keep mine
+      leaves the built-in untouched; Replace swaps it
+- [ ] Editor theme list shows color dots matching each theme's real palette
+- [ ] Panel Break section: Turn off silences reminders (countdown shows Off),
+      Turn on resumes; Ctrl+Alt+P opens the panel

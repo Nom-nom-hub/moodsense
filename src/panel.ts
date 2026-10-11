@@ -11,6 +11,7 @@ export interface PanelActions {
   setAmbient(track: AmbientTrack): void;
   setLayer(track: AmbientTrack): void;
   runRoutine(name: string): Promise<void>;
+  setBreaksEnabled(enabled: boolean): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
   deleteMood(id: string): Promise<void>;
   resetMood(id: string): Promise<void>;
@@ -159,6 +160,11 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'runRoutine':
         if (msg.name) {
           await this.actions.runRoutine(msg.name);
+        }
+        break;
+      case 'setBreaks':
+        if (typeof msg.value === 'number') {
+          await this.actions.setBreaksEnabled(msg.value === 1);
         }
         break;
       case 'saveMood':
@@ -355,6 +361,21 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   .check input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
   details.adv { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
   details.adv summary { font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; letter-spacing: .04em; }
+  .tlist { border: 1px solid var(--line); border-radius: 8px; max-height: 172px; overflow-y: auto; padding: 3px; }
+  .trow {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    appearance: none; cursor: pointer; border: 1px solid transparent; border-radius: 6px;
+    background: transparent; color: var(--ink); padding: 6px 8px; text-align: left; font-size: 12.5px;
+    transition: background .12s ease;
+  }
+  .trow:hover { background: var(--hover); }
+  .trow.sel { background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .trow .dots { display: flex; flex: none; }
+  .trow .dots span { width: 11px; height: 11px; border-radius: 50%; border: 1px solid var(--line); margin-left: -4px; }
+  .trow .dots span:first-child { margin-left: 0; }
+  .trow .tname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trow .tcheck { flex: none; color: var(--accent); font-size: 12px; opacity: 0; }
+  .trow.sel .tcheck { opacity: 1; }
   .btn.danger { border: 1px solid transparent; background: transparent; color: var(--vscode-errorForeground, #f87171); flex: 0 0 auto; }
   .btn.danger:hover { text-decoration: underline; }
 </style>
@@ -395,7 +416,11 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   <div class="label" id="breakLabel">Break</div>
   <div class="breakrow">
     <div class="count" id="countdown">—</div>
-    <button class="linkish" id="resetBreak">Reset timer</button>
+    <span>
+      <button class="linkish" id="breaksToggle">Turn off</button>
+      <span style="color: var(--muted);"> · </span>
+      <button class="linkish" id="resetBreak">Reset timer</button>
+    </span>
   </div>
   <div class="bar"><div id="breakBar" style="width: 0%"></div></div>
 
@@ -429,7 +454,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     </div>
     <div class="field">
       <span class="flabel">Theme</span>
-      <select id="f-theme"></select>
+      <div class="tlist" id="f-theme"></div>
     </div>
     <div class="field">
       <span class="flabel">Font size · <span class="fval" id="f-fontsize-val"></span></span>
@@ -666,6 +691,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       document.getElementById('breakLabel').textContent =
         state.timerPhase === 'focus' ? 'Pomodoro · Focus' :
         state.timerPhase === 'break' ? 'Pomodoro · On break' : 'Break';
+      document.getElementById('breaksToggle').textContent = state.breaksEnabled ? 'Turn off' : 'Turn on';
 
       const wk = document.getElementById('weekRows');
       wk.innerHTML = '';
@@ -738,6 +764,9 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     document.getElementById('offBtn').addEventListener('click', () => vscode.postMessage({ type: 'off' }));
     document.getElementById('focusBtn').addEventListener('click', () => vscode.postMessage({ type: 'focus' }));
     document.getElementById('resetBreak').addEventListener('click', () => vscode.postMessage({ type: 'resetBreak' }));
+    document.getElementById('breaksToggle').addEventListener('click', () => {
+      if (state) vscode.postMessage({ type: 'setBreaks', value: state.breaksEnabled ? 0 : 1 });
+    });
     document.getElementById('exportBtn').addEventListener('click', () => vscode.postMessage({ type: 'export' }));
     document.getElementById('importBtn').addEventListener('click', () => vscode.postMessage({ type: 'import' }));
 
@@ -749,6 +778,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     let selAccent = SWATCHES[0];
     let selAmbient = 'deep';
     let selLayer = 'none';
+    let selTheme = 'Default Dark Modern';
 
     function showEditor(show) {
       document.getElementById('listView').classList.toggle('hidden', show);
@@ -805,24 +835,33 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       });
       swBox.appendChild(color);
 
-      const themeSel = document.getElementById('f-theme');
-      themeSel.innerHTML = '';
-      const wanted = p ? p.theme : 'Default Dark Modern';
-      let found = false;
-      for (const t of state.themes) {
-        const opt = document.createElement('option');
-        opt.value = t.id;
-        opt.textContent = t.label === t.id ? t.id : t.label;
-        if (t.id === wanted) found = true;
-        themeSel.appendChild(opt);
+      const themeList = document.getElementById('f-theme');
+      themeList.innerHTML = '';
+      selTheme = p ? p.theme : 'Default Dark Modern';
+      const themeRows = [...state.themes];
+      if (!themeRows.some((t) => t.id === selTheme)) {
+        themeRows.unshift({ id: selTheme, label: selTheme + ' (not installed)', swatch: null });
       }
-      if (!found) {
-        const opt = document.createElement('option');
-        opt.value = wanted;
-        opt.textContent = wanted + ' (not installed)';
-        themeSel.appendChild(opt);
+      for (const t of themeRows) {
+        const row = document.createElement('button');
+        row.className = 'trow' + (t.id === selTheme ? ' sel' : '');
+        row.innerHTML = '<span class="dots"></span><span class="tname"></span><span class="tcheck">✓</span>';
+        if (t.swatch) {
+          const dots = row.querySelector('.dots');
+          for (const color of [t.swatch.bg, t.swatch.accent, t.swatch.fg]) {
+            const d = document.createElement('span');
+            d.style.background = color;
+            dots.appendChild(d);
+          }
+        }
+        row.querySelector('.tname').textContent = t.label;
+        row.addEventListener('click', () => {
+          selTheme = t.id;
+          themeList.querySelectorAll('.trow').forEach((el) => el.classList.remove('sel'));
+          row.classList.add('sel');
+        });
+        themeList.appendChild(row);
       }
-      themeSel.value = wanted;
 
       const fs = document.getElementById('f-fontsize');
       fs.value = p ? p.fontSize : 14;
@@ -903,7 +942,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         label: document.getElementById('f-name').value.trim() || 'Custom Mood',
         icon: selIcon,
         accent: selAccent,
-        theme: document.getElementById('f-theme').value,
+        theme: selTheme,
         fontSize: parseInt(document.getElementById('f-fontsize').value, 10),
         fontFamily: ff || undefined,
         lineHeight: typeof lh === 'number' && !Number.isNaN(lh) ? lh : undefined,

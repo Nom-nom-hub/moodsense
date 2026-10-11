@@ -7,6 +7,7 @@ import { accentFor, type PanelState } from './panelState.js';
 import { sanitizeMoodPack, sanitizeProfile, sanitizeRoutines, slugifyMoodId } from './profileOps.js';
 import { formatTime, isQuiet, quietEndsAt, sanitizeQuietHours, sanitizeSchedule, slotFor, type QuietHours } from './schedule.js';
 import { appendSession, formatDuration, summarizeWeek, type MoodSession } from './history.js';
+import { fallbackSwatch, parseThemePalette, type ThemeSwatch } from './themePalette.js';
 import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
 
@@ -29,6 +30,9 @@ let ambientLayerOverride: AmbientTrack = 'none';
 let sessionStart: number | null = null;
 /** Identity of the schedule slot last applied, for boundary detection. */
 let lastSlotId: string | null = null;
+/** True while Focus Mode is engaged (it is not a mood, but the status bar
+ *  must not pretend nothing is on while Zen + ambient are running). */
+let focusModeOn = false;
 
 /** MoodSense's own configuration writes also fire onDidChangeConfiguration.
  *  This timestamp marks a short window after our writes during which config
@@ -62,6 +66,12 @@ export function activate(context: vscode.ExtensionContext): void {
       pushState(context);
     },
     runRoutine: (name) => runRoutine(context, name),
+    setBreaksEnabled: async (enabled) => {
+      await vscode.workspace
+        .getConfiguration('moodsense')
+        .update('breaks.enabled', enabled, vscode.ConfigurationTarget.Global);
+      pushState(context);
+    },
     saveMood: (id, profile) => saveMood(context, id, profile),
     deleteMood: (id) => deleteMood(context, id),
     resetMood: (id) => resetMood(context, id),
@@ -281,25 +291,42 @@ function buildState(context: vscode.ExtensionContext): PanelState {
 
 /** Every theme contributed by any installed extension (built-ins included),
  *  for the mood editor's picker — users map moods onto themes they actually
- *  own, Dracula and friends included. */
-function installedThemes(): { id: string; label: string }[] {
-  const seen = new Map<string, string>();
+ *  own, Dracula and friends included. Swatches are read from each theme's
+ *  own file once and cached (VS Code offers no API for theme colors). */
+const swatchCache = new Map<string, ThemeSwatch | null>();
+
+function installedThemes(): { id: string; label: string; swatch: ThemeSwatch | null }[] {
+  const seen = new Map<string, { id: string; label: string; swatch: ThemeSwatch | null }>();
   for (const ext of vscode.extensions.all) {
-    const themes = (ext.packageJSON as { contributes?: { themes?: { id?: string; label?: string }[] } })
-      ?.contributes?.themes;
+    const themes = (ext.packageJSON as {
+      contributes?: { themes?: { id?: string; label?: string; uiTheme?: string; path?: string }[] };
+    })?.contributes?.themes;
     if (!themes) {
       continue;
     }
     for (const t of themes) {
       const id = t.id ?? t.label;
-      if (id && !seen.has(id)) {
-        seen.set(id, t.label ?? id);
+      if (!id || seen.has(id)) {
+        continue;
       }
+      let swatch = swatchCache.get(id);
+      if (swatch === undefined) {
+        swatch = null;
+        if (t.path) {
+          try {
+            const file = vscode.Uri.joinPath(ext.extensionUri, t.path);
+            const text = fs.readFileSync(file.fsPath, 'utf8');
+            swatch = parseThemePalette(text, fallbackSwatch(t.uiTheme));
+          } catch {
+            swatch = null;
+          }
+        }
+        swatchCache.set(id, swatch);
+      }
+      seen.set(id, { id, label: t.label ?? id, swatch });
     }
   }
-  return [...seen.entries()]
-    .map(([id, label]) => ({ id, label }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function pushState(context: vscode.ExtensionContext): void {
@@ -471,6 +498,7 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
   ambientOverride = profile.ambient;
   ambientLayerOverride = profile.ambientLayer ?? 'none';
   breaks.setMultiplier(profile.breakIntervalMultiplier);
+  focusModeOn = false;
   await context.globalState.update(STATE_MOOD, moodId);
   sessionStart = Date.now();
   updateStatusBar(moodId, profile);
@@ -479,6 +507,7 @@ async function applyMood(context: vscode.ExtensionContext, moodId: string): Prom
 
 async function turnOff(context: vscode.ExtensionContext): Promise<void> {
   await closeSession(context);
+  focusModeOn = false;
   markApplying();
   const snapshot = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
   if (snapshot) {
@@ -518,6 +547,8 @@ async function focusMode(context: vscode.ExtensionContext): Promise<void> {
   if (ambientOverride === 'none') {
     ambientOverride = 'deep';
   }
+  focusModeOn = true;
+  updateStatusBar(context.globalState.get<string>(STATE_MOOD));
   pushState(context);
   void vscode.window.showInformationMessage('MoodSense Focus Mode on. Run "MoodSense: Off" to restore.');
 }
@@ -541,14 +572,20 @@ function updateStatusBar(moodId: string | undefined, profile?: MoodProfile): voi
     return;
   }
   if (!moodId) {
+    if (focusModeOn) {
+      statusBar.text = 'MoodSense: Focus Mode';
+      statusBar.tooltip = 'MoodSense Focus Mode is on (Zen + ambient). Run "MoodSense: Off" to restore.';
+      statusBar.color = undefined;
+      return;
+    }
     statusBar.text = 'MoodSense';
     statusBar.tooltip = 'MoodSense is off. Click to set your mood.';
     statusBar.color = undefined;
     return;
   }
   const p = profile ?? getProfile(moodId);
-  statusBar.text = `MoodSense: ${p?.label ?? moodId}`;
-  statusBar.tooltip = `MoodSense: ${p?.label ?? moodId}. Click to change mood.`;
+  statusBar.text = `MoodSense: ${p?.label ?? moodId}${focusModeOn ? ' · Focus' : ''}`;
+  statusBar.tooltip = `MoodSense: ${p?.label ?? moodId}${focusModeOn ? ' + Focus Mode' : ''}. Click to change mood.`;
   // Tint the status bar with the mood's accent — state readable at a glance.
   statusBar.color = accentFor(moodId, p);
 }
@@ -632,11 +669,13 @@ async function deleteMood(context: vscode.ExtensionContext, id: string): Promise
   delete profiles[id];
   await persistProfiles(profiles);
   if (context.globalState.get<string>(STATE_MOOD) === id) {
-    await closeSession(context);
-    await context.globalState.update(STATE_MOOD, undefined);
-    updateStatusBar(undefined);
+    // Deleting the mood you're wearing must not leave a half-state (sound
+    // playing, timer retuned, status bar claiming "off"): run the full
+    // Off cleanup — restore the snapshot, silence, reset the rhythm.
+    await turnOff(context);
+  } else {
+    pushState(context);
   }
-  pushState(context);
 }
 
 async function resetMood(context: vscode.ExtensionContext, id: string): Promise<void> {
@@ -678,11 +717,35 @@ async function importMoods(context: vscode.ExtensionContext): Promise<void> {
     void vscode.window.showWarningMessage('MoodSense: no valid moods found in that pack — nothing imported.');
     return;
   }
-  const merged = { ...getProfiles(), ...pack };
+  // Never silently overwrite: a pack that reuses existing ids (including
+  // built-ins like "focused") must ask first.
+  const existing = getProfiles();
+  const collisions = Object.keys(pack).filter((k) => k in existing);
+  let toMerge = pack;
+  if (collisions.length > 0) {
+    const names = collisions.map((k) => existing[k].label).join(', ');
+    const choice = await vscode.window.showWarningMessage(
+      `This pack would replace ${collisions.length} of your existing mood(s): ${names}.`,
+      { modal: true },
+      'Replace them',
+      'Keep mine',
+    );
+    if (choice === undefined) {
+      return; // cancelled — nothing imported
+    }
+    if (choice === 'Keep mine') {
+      toMerge = Object.fromEntries(Object.entries(pack).filter(([k]) => !(k in existing)));
+      if (Object.keys(toMerge).length === 0) {
+        void vscode.window.showInformationMessage('MoodSense: nothing new in that pack — your moods are untouched.');
+        return;
+      }
+    }
+  }
+  const merged = { ...existing, ...toMerge };
   await persistProfiles(merged);
   pushState(context);
   void vscode.window.showInformationMessage(
-    `MoodSense: imported ${Object.keys(pack).length} mood(s): ${Object.values(pack).map((p) => p.label).join(', ')}.`,
+    `MoodSense: imported ${Object.keys(toMerge).length} mood(s): ${Object.values(toMerge).map((p) => p.label).join(', ')}.`,
   );
 }
 

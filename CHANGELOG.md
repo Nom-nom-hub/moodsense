@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.1 — 2026-10-11
+
+Review fixes, round two (verified against the tree first — three of the
+ten claims were already handled: all commands ARE declared in the
+manifest, customDirectory IS a declared setting, and the status-bar tint
+shipped in 0.5.0):
+
+- **Deleting the mood you're wearing no longer leaves a half-state:** it
+  runs the full Off cleanup — snapshot restored, sound silenced, timer reset
+- **Focus Mode shows in the status bar** ("MoodSense: Focus Mode", or
+  "Mood · Focus" over an active mood) instead of a misleading idle label
+- **Import asks before overwriting:** a pack that reuses existing mood ids
+  prompts Replace / Keep mine / Cancel — built-ins included
+- **Theme preview swatches in the editor:** the theme picker is now a list
+  with real color dots (background / accent / foreground) read from each
+  theme's own file — see Quiet Light vs Monokai before you commit
+- **Break reminders toggle in the panel** — no more hunting through the
+  notification or Settings to silence them
+- **Panel keybinding:** Ctrl+Alt+P / Cmd+Alt+P opens the control panel
+- **Extension flow tests:** the vscode mock grew a real config store and
+  command registry, and activate → apply → restore → cycle → focus flows
+  are now covered end-to-end (57 tests total)
+
+
 ## 0.5.0 — 2026-10-11
 
 The "alive" release — MoodSense starts running itself, politely:

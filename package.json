@@ -310,6 +310,11 @@
         "command": "moodsense.cycleMood",
         "key": "ctrl+alt+m",
         "mac": "cmd+alt+m"
+      },
+      {
+        "command": "moodsense.openAmbient",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
       }
     ]
   },
@@ -348,6 +353,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.5.0",
+  "version": "0.5.1",
   "icon": "media/icon.png"
 }

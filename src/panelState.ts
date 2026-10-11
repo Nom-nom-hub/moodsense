@@ -8,8 +8,9 @@ export interface PanelState {
   profiles: Record<string, MoodProfile>;
   /** Ids of the built-in moods (the editor offers Reset instead of Delete). */
   builtinIds: string[];
-  /** Themes installed in this VS Code, for the editor's theme picker. */
-  themes: { id: string; label: string }[];
+  /** Themes installed in this VS Code, for the editor's theme picker —
+   *  each with preview colors read from its own theme file when possible. */
+  themes: { id: string; label: string; swatch: { bg: string; fg: string; accent: string } | null }[];
   /** Audio files found in the user's custom folder ("file:<name>" tokens). */
   customTracks: { token: string; label: string }[];
   accent: string;
