@@ -548,6 +548,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   <div class="hint hidden" id="ytError" style="color: #F87171;"></div>
   <div id="ytWrap" class="hidden">
     <div id="ytPlayer"></div>
+    <div class="hint hidden" id="ytPlayerNote" style="color: #FBBF24;"></div>
     <div class="hint">YouTube's own embedded player. If it starts silent, press play on the video once.</div>
   </div>
   <div class="hint" style="margin: 10px 0 6px;">Layer · a second sound underneath</div>
@@ -893,6 +894,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     function setYouTube(id, vol) {
       ytActive = true;
       document.getElementById('ytWrap').classList.remove('hidden');
+      document.getElementById('ytPlayerNote').classList.add('hidden');
       if (ytId !== id) {
         ytId = id;
         const holder = document.getElementById('ytPlayer');
@@ -901,6 +903,14 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         ytFrame.allow = 'autoplay; encrypted-media; picture-in-picture';
         ytFrame.src = 'https://www.youtube-nocookie.com/embed/' + id + '?enablejsapi=1&rel=0&playsinline=1';
         ytFrame.addEventListener('load', () => {
+          // Subscribe to the widget event channel (errors + state), then
+          // set volume; actual play waits for onReady when possible.
+          if (ytFrame && ytFrame.contentWindow) {
+            ytFrame.contentWindow.postMessage(
+              JSON.stringify({ event: 'listening', id: 'moodsense-yt', channel: 'widget' }),
+              'https://www.youtube-nocookie.com',
+            );
+          }
           ytCommand('setVolume', [Math.round(vol * 100)]);
           if (wantsPlay) ytCommand('playVideo');
         });
@@ -910,6 +920,42 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         ytCommand(wantsPlay ? 'playVideo' : 'pauseVideo');
       }
     }
+    function ytPlayerNote(text) {
+      const note = document.getElementById('ytPlayerNote');
+      note.textContent = text;
+      note.classList.toggle('hidden', !text);
+    }
+    /* Player events arrive as postMessages from the embed origin. Errors
+     * get plain-language translations — YouTube's own screens don't tell
+     * you the one thing you need to know (usually: embedding is off). */
+    window.addEventListener('message', (event) => {
+      if (typeof event.data !== 'string') return;
+      let host = '';
+      try { host = new URL(event.origin).hostname; } catch { return; }
+      if (!/youtube(-nocookie)?\.com$/.test(host)) return;
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
+      const num = typeof data.info === 'number' ? data.info : typeof data.data === 'number' ? data.data : undefined;
+      if (data.event === 'onError' && num !== undefined) {
+        if (num === 101 || num === 150) {
+          ytPlayerNote('This video\'s owner has embedding turned off — it can\'t play inside any app. Official label uploads often block it; a lyric video or a different upload of the same song usually works.');
+        } else if (num === 100) {
+          ytPlayerNote('That video is private, deleted, or the link\'s id is wrong.');
+        } else {
+          ytPlayerNote('YouTube\'s player hit an error (' + num + '). Give it a moment and try again.');
+        }
+      } else if (data.event === 'onReady') {
+        ytPlayerNote('');
+        ytCommand('setVolume', [Math.round(baseVolume * 100)]);
+        if (wantsPlay) ytCommand('playVideo');
+      } else if (data.event === 'infoDelivery' && data.info && typeof data.info.playerState === 'number') {
+        if (data.info.playerState === 1) playBtn.innerHTML = PAUSE;
+        else if (data.info.playerState === 2) playBtn.innerHTML = PLAY;
+      } else if (data.event === 'onStateChange' && num !== undefined) {
+        if (num === 1) playBtn.innerHTML = PAUSE;
+        else if (num === 2) playBtn.innerHTML = PLAY;
+      }
+    });
     function stopYouTube() {
       ytActive = false;
       if (ytFrame) ytCommand('pauseVideo');

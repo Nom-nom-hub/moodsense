@@ -376,6 +376,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.9.1",
+  "version": "0.9.2",
   "icon": "media/icon.png"
 }

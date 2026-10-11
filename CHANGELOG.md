@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.2 — 2026-10-11
+
+- **YouTube player errors, translated.** The panel now listens to the
+  embedded player's own error events and explains them in plain
+  language: embedding disabled by the owner (the common one — official
+  label uploads block it; another upload usually works), private or
+  deleted video, or a generic player fault with its code. Play state
+  also syncs the panel's play/pause button with the video
+
+
 ## 0.9.1 — 2026-10-11
 
 - **YouTube Add no longer fails silently.** The input used to clear
