@@ -270,6 +270,15 @@
           "default": [],
           "order": 25,
           "description": "Your own internet-radio stream URLs (direct https audio streams), added from the panel."
+        },
+        "moodsense.workspaceMoods": {
+          "type": "object",
+          "default": {},
+          "order": 27,
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per-workspace mood pins (folder path \u2192 mood id), managed from the panel's \"This workspace\" section. A pinned folder always opens with its mood and outranks the schedule."
         }
       },
       "title": "MoodSense"
@@ -385,6 +394,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.10.0",
+  "version": "0.11.0",
   "icon": "media/icon.png"
 }

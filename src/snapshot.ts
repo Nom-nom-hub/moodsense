@@ -8,6 +8,11 @@ export interface SettingsSnapshot {
   lineHeight: number | undefined;
   cursorStyle: string | undefined;
   minimapEnabled: boolean | undefined;
+  /** Values set AT the appearance scope (workspace when a folder is open,
+   *  global otherwise); undefined = unset at that scope. Restore writes
+   *  these back so our keys vanish instead of shadowing. Optional for
+   *  snapshots stored by older versions. */
+  scopeValues?: Record<string, unknown>;
 }
 
 /** Guard for the stale-snapshot problem: if the user changes their theme,

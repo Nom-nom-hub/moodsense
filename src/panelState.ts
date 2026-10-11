@@ -27,6 +27,8 @@ export interface PanelState {
   week: { mood: string; label: string; seconds: number; fraction: number; durationLabel: string }[];
   /** One-click routines from settings. */
   routines: { name: string; mood: string }[];
+  /** Per-workspace pin status; null when no folder is open. */
+  workspace: { name: string; pinnedMood: string | null } | null;
   /** First-run welcome card: shown until dismissed or a mood is worn. */
   showWelcome: boolean;
   /** True while a mood apply is in flight (panel rows disable). */

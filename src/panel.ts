@@ -21,6 +21,8 @@ export interface PanelActions {
   pickAudioFolder(): Promise<void>;
   addStream(url: string): Promise<{ ok: boolean; reason?: string }>;
   removeStream(token: string): Promise<void>;
+  pinWorkspace(): Promise<void>;
+  unpinWorkspace(): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
   deleteMood(id: string): Promise<void>;
   resetMood(id: string): Promise<void>;
@@ -281,6 +283,12 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (msg.id) {
           await this.actions.removeStream(msg.id);
         }
+        break;
+      case 'pinWorkspace':
+        await this.actions.pinWorkspace();
+        break;
+      case 'unpinWorkspace':
+        await this.actions.unpinWorkspace();
         break;
       case 'saveMood':
         await this.actions.saveMood(msg.id ?? null, msg.profile);
@@ -549,6 +557,16 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       Off always brings it back, untouched.</div>
     <button class="btn primary" id="welcomeTry">Try Focused</button>
   </div>
+  <div id="wsWrap" class="hidden">
+    <div class="label">This workspace</div>
+    <div class="mood-tools" style="align-items: center;">
+      <span id="wsName" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+      <button class="mini hidden" id="wsPin"></button>
+      <button class="mini hidden" id="wsUnpin">Unpin</button>
+    </div>
+    <div class="hint" id="wsHint" style="margin-bottom: 10px;"></div>
+  </div>
+
   <div class="labelrow">
     <span class="label">Mood</span>
     <button class="mini" id="newMood">+ New mood</button>
@@ -1180,6 +1198,32 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
 
       document.getElementById('welcomeCard').classList.toggle('hidden', !state.showWelcome);
+
+      const ws = state.workspace;
+      document.getElementById('wsWrap').classList.toggle('hidden', !ws);
+      if (ws) {
+        document.getElementById('wsName').textContent = ws.name;
+        const pinBtn = document.getElementById('wsPin');
+        const unpinBtn = document.getElementById('wsUnpin');
+        const wsHint = document.getElementById('wsHint');
+        if (ws.pinnedMood) {
+          const pinnedProfile = state.moods.find((m) => m.id === ws.pinnedMood);
+          wsHint.textContent = 'Opens with ' + (pinnedProfile ? pinnedProfile.label : ws.pinnedMood) + ' — every time you open this folder.';
+          pinBtn.classList.add('hidden');
+          unpinBtn.classList.remove('hidden');
+        } else {
+          unpinBtn.classList.add('hidden');
+          if (state.currentMood) {
+            const worn = state.moods.find((m) => m.id === state.currentMood);
+            pinBtn.textContent = 'Pin ' + (worn ? worn.label : state.currentMood) + ' here';
+            pinBtn.classList.remove('hidden');
+            wsHint.textContent = 'Pin the mood you are wearing and this folder will always open with it.';
+          } else {
+            pinBtn.classList.add('hidden');
+            wsHint.textContent = 'Wear a mood, then pin it — this folder will always open with it.';
+          }
+        }
+      }
       document.getElementById('moodRows').classList.toggle('busy', !!state.applying);
 
       const rwrap = document.getElementById('routinesWrap');
@@ -1401,6 +1445,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     });
     document.getElementById('offBtn').addEventListener('click', () => vscode.postMessage({ type: 'off' }));
     document.getElementById('welcomeTry').addEventListener('click', () => vscode.postMessage({ type: 'setMood', id: 'focused' }));
+    document.getElementById('wsPin').addEventListener('click', () => vscode.postMessage({ type: 'pinWorkspace' }));
+    document.getElementById('wsUnpin').addEventListener('click', () => vscode.postMessage({ type: 'unpinWorkspace' }));
     document.getElementById('welcomeDismiss').addEventListener('click', () => vscode.postMessage({ type: 'dismissWelcome' }));
     document.getElementById('focusBtn').addEventListener('click', () => vscode.postMessage({ type: 'focus' }));
     document.getElementById('resetBreak').addEventListener('click', () => vscode.postMessage({ type: 'resetBreak' }));

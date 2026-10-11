@@ -122,3 +122,10 @@ list covers what only a live IDE can prove.
       assign Drone Zone to a mood and switch to it
 - [ ] Paste a stream URL: chip appears with a readable label; bad URL explains itself
 - [ ] Equalizer still dances on Deep/Rain; hides quietly on radio
+
+## Per-workspace checks (0.11.0)
+- [ ] Open project A, wear Focused, use "Pin Focused here"; open project B —
+      B is untouched; pin Energetic there; reopen A — Focused returns
+- [ ] Off inside a workspace: the project's .vscode/settings.json holds no
+      leftover MoodSense appearance keys; global settings untouched
+- [ ] With a pin set, the schedule does not override it at a boundary

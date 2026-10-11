@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0 — 2026-10-11
+
+- **Per-workspace moods.** With a folder open, MoodSense now lives in
+  that workspace: the worn mood and its restore snapshot are stored per
+  project, and appearance changes are written to the workspace's own
+  settings — so opening a project never disturbs another project's
+  look, and switching back restores exactly. Restore is scope-exact:
+  Off removes MoodSense's workspace keys rather than pinning copies
+  that would shadow your global settings
+- **Pins.** The panel gains a "This workspace" section: pin the mood
+  you're wearing and that folder always opens with it. A pin outranks
+  the time-of-day schedule — the folder's word is final
+- With no folder open, everything behaves exactly as before (global)
+
+
 ## 0.10.0 — 2026-10-11
 
 A music source with no gatekeeper:

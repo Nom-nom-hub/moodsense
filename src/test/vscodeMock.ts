@@ -38,9 +38,18 @@ export const workspace = {
           store.set(full, value);
         }
       },
+      inspect<T>(key: string) {
+        const full = `${section}.${key}`;
+        return store.has(full)
+          ? { key: full, globalValue: store.get(full) as T }
+          : { key: full };
+      },
     };
   },
   onDidChangeConfiguration() {
+    return { dispose(): void { /* no-op */ } };
+  },
+  onDidChangeWorkspaceFolders() {
     return { dispose(): void { /* no-op */ } };
   },
 };

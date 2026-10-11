@@ -11,6 +11,7 @@ import { fallbackSwatch, parseThemePalette, type ThemeSwatch } from './themePale
 import { isTypingEvent, KeyRateTracker } from './keyrate.js';
 import { parseYouTubeId, sanitizeYouTubeIds } from './youtube.js';
 import { RADIO_STATIONS, parseStreamUrl, sanitizeStreamUrls, streamLabel } from './radio.js';
+import { pinnedMoodFor, sanitizeWorkspaceMoods } from './workspacePins.js';
 import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
 
@@ -174,6 +175,29 @@ export function activate(context: vscode.ExtensionContext): void {
         .update('breaks.enabled', enabled, vscode.ConfigurationTarget.Global);
       pushState(context);
     },
+    pinWorkspace: async () => {
+      const folder = currentFolder();
+      const mood = stateFor(context).get<string>(STATE_MOOD);
+      if (!folder || !mood) {
+        return;
+      }
+      const cfg = vscode.workspace.getConfiguration('moodsense');
+      const map = sanitizeWorkspaceMoods(cfg.get<unknown>('workspaceMoods', {}));
+      map[folder.fsPath] = mood;
+      await cfg.update('workspaceMoods', map, vscode.ConfigurationTarget.Global);
+      pushState(context);
+    },
+    unpinWorkspace: async () => {
+      const folder = currentFolder();
+      if (!folder) {
+        return;
+      }
+      const cfg = vscode.workspace.getConfiguration('moodsense');
+      const map = sanitizeWorkspaceMoods(cfg.get<unknown>('workspaceMoods', {}));
+      delete map[folder.fsPath];
+      await cfg.update('workspaceMoods', map, vscode.ConfigurationTarget.Global);
+      pushState(context);
+    },
     saveMood: (id, profile) => saveMood(context, id, profile),
     deleteMood: (id) => deleteMood(context, id),
     resetMood: (id) => resetMood(context, id),
@@ -257,16 +281,16 @@ export function activate(context: vscode.ExtensionContext): void {
       if (touchesAppearance && Date.now() > applyingUntil) {
         // A manual appearance change while a mood is active: the restore
         // point follows the user's latest setup (see snapshot.ts).
-        const existing = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
+        const existing = stateFor(context).get<SettingsSnapshot>(STATE_SNAPSHOT);
         const merged = mergeSnapshot(existing, takeSnapshot());
         if (merged) {
-          void context.globalState.update(STATE_SNAPSHOT, merged);
+          void stateFor(context).update(STATE_SNAPSHOT, merged);
         }
       }
     }),
   );
 
-  const current = context.globalState.get<string>(STATE_MOOD);
+  const current = stateFor(context).get<string>(STATE_MOOD);
   updateStatusBar(current);
   if (current) {
     sessionStart = Date.now();
@@ -285,11 +309,18 @@ export function activate(context: vscode.ExtensionContext): void {
     breaks.start();
   }
 
+  // Workspace pin: this folder has its own mood — wear it.
+  const pin = workspacePin();
+  if (pin && pin !== current) {
+    void applyMood(context, pin);
+  }
+
   // Schedule engine: apply a mood when a time boundary is crossed — and
   // only then, so a manual choice mid-slot is respected until the next
   // boundary. On activation we baseline (or apply, when nothing is worn).
+  // A pinned workspace outranks the schedule.
   const slot = slotFor(scheduleEntries(), new Date());
-  if (scheduleEnabled() && slot) {
+  if (scheduleEnabled() && slot && !pin) {
     lastSlotId = slot.slotId;
     if (!current) {
       void applyMood(context, slot.entry.mood);
@@ -298,12 +329,22 @@ export function activate(context: vscode.ExtensionContext): void {
   const scheduleTimer = setInterval(() => void scheduleTick(context), 30_000);
   context.subscriptions.push({ dispose: () => clearInterval(scheduleTimer) });
 
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      const p = workspacePin();
+      if (p && p !== stateFor(context).get<string>(STATE_MOOD)) {
+        void applyMood(context, p);
+      }
+      pushState(context);
+    }),
+  );
+
   pushState(context);
   statusBar.show();
 }
 
 async function scheduleTick(context: vscode.ExtensionContext): Promise<void> {
-  if (!scheduleEnabled()) {
+  if (!scheduleEnabled() || workspacePin()) {
     return;
   }
   const slot = slotFor(scheduleEntries(), new Date());
@@ -332,7 +373,7 @@ function currentQuietHours(): QuietHours {
 
 /** Close the running mood session into the local history log. */
 async function closeSession(context: vscode.ExtensionContext): Promise<void> {
-  const mood = context.globalState.get<string>(STATE_MOOD);
+  const mood = stateFor(context).get<string>(STATE_MOOD);
   if (sessionStart === null || !mood) {
     return;
   }
@@ -386,7 +427,7 @@ export function deactivate(): void {
 
 function buildState(context: vscode.ExtensionContext): PanelState {
   const cfg = vscode.workspace.getConfiguration('moodsense');
-  const currentMood = context.globalState.get<string>(STATE_MOOD) ?? null;
+  const currentMood = stateFor(context).get<string>(STATE_MOOD) ?? null;
   const profiles = getProfiles();
   const quiet = isQuiet(currentQuietHours(), new Date());
   const pomodoro = cfg.get<boolean>('pomodoro.enabled', false);
@@ -419,6 +460,10 @@ function buildState(context: vscode.ExtensionContext): PanelState {
       durationLabel: formatDuration(w.seconds),
     })),
     routines: sanitizeRoutines(cfg.get<unknown>('routines', [])).map((r) => ({ name: r.name, mood: r.mood })),
+    workspace: (() => {
+      const folder = currentFolder();
+      return folder ? { name: folder.name, pinnedMood: workspacePin() ?? null } : null;
+    })(),
     showWelcome:
       !context.globalState.get<boolean>('moodsense.welcomed', false) &&
       !currentMood &&
@@ -508,7 +553,7 @@ async function cycleMood(context: vscode.ExtensionContext): Promise<void> {
   if (ids.length === 0) {
     return;
   }
-  const current = context.globalState.get<string>(STATE_MOOD);
+  const current = stateFor(context).get<string>(STATE_MOOD);
   const idx = current ? ids.indexOf(current) : -1;
   const next = ids[(idx + 1) % ids.length];
   await applyMood(context, next);
@@ -644,8 +689,8 @@ async function applyMoodInner(
 
   // Snapshot the user's own setup exactly once, before the first apply, so
   // Off can restore it byte-for-byte.
-  if (!context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT)) {
-    await context.globalState.update(STATE_SNAPSHOT, takeSnapshot());
+  if (!stateFor(context).get<SettingsSnapshot>(STATE_SNAPSHOT)) {
+    await stateFor(context).update(STATE_SNAPSHOT, takeSnapshot());
   }
 
   markApplying();
@@ -655,10 +700,10 @@ async function applyMoodInner(
   // Optional per-mood fields: a mood that defines one applies it; a mood
   // that doesn't returns the editor to the user's own base value from the
   // snapshot — so switching moods is always deterministic.
-  const snapshot = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
-  await setEditorValue('fontFamily', profile.fontFamily ?? snapshot?.fontFamily);
-  await setEditorValue('lineHeight', profile.lineHeight ?? snapshot?.lineHeight);
-  await setEditorValue('cursorStyle', profile.cursorStyle ?? snapshot?.cursorStyle);
+  const snapshot = stateFor(context).get<SettingsSnapshot>(STATE_SNAPSHOT);
+  await setEditorValue('fontFamily', profile.fontFamily ?? baseValue(snapshot, 'fontFamily'));
+  await setEditorValue('lineHeight', profile.lineHeight ?? baseValue(snapshot, 'lineHeight'));
+  await setEditorValue('cursorStyle', profile.cursorStyle ?? baseValue(snapshot, 'cursorStyle'));
 
   const allowLayout = vscode.workspace
     .getConfiguration('moodsense')
@@ -672,7 +717,7 @@ async function applyMoodInner(
   ambientLayerOverride = profile.ambientLayer ?? 'none';
   breaks.setMultiplier(profile.breakIntervalMultiplier);
   focusModeOn = false;
-  await context.globalState.update(STATE_MOOD, moodId);
+  await stateFor(context).update(STATE_MOOD, moodId);
   sessionStart = Date.now();
   updateStatusBar(moodId, profile);
   pushState(context);
@@ -682,8 +727,18 @@ async function turnOff(context: vscode.ExtensionContext): Promise<void> {
   await closeSession(context);
   focusModeOn = false;
   markApplying();
-  const snapshot = context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT);
-  if (snapshot) {
+  const snapshot = stateFor(context).get<SettingsSnapshot>(STATE_SNAPSHOT);
+  if (snapshot?.scopeValues) {
+    // Write back exactly what was set at this scope — undefined removes
+    // our key, so the user's other-scope settings show through again.
+    const scope = snapshot.scopeValues;
+    await setWorkbenchTheme(scope.theme as string | undefined);
+    await setEditorFontSize(scope.fontSize as number | undefined);
+    await setEditorValue('fontFamily', scope.fontFamily as string | undefined);
+    await setEditorValue('lineHeight', scope.lineHeight as number | undefined);
+    await setEditorValue('cursorStyle', scope.cursorStyle as string | undefined);
+    await setMinimap(scope.minimapEnabled as boolean | undefined);
+  } else if (snapshot) {
     if (snapshot.theme !== undefined) {
       await setWorkbenchTheme(snapshot.theme);
     }
@@ -697,22 +752,22 @@ async function turnOff(context: vscode.ExtensionContext): Promise<void> {
       await setMinimap(snapshot.minimapEnabled);
     }
   }
-  if (context.globalState.get<boolean>(STATE_ZEN_ON)) {
+  if (stateFor(context).get<boolean>(STATE_ZEN_ON)) {
     await setZen(context, false);
   }
   ambientOverride = 'none';
   ambientLayerOverride = 'none';
   breaks.stop();
-  await context.globalState.update(STATE_MOOD, undefined);
-  await context.globalState.update(STATE_SNAPSHOT, undefined);
+  await stateFor(context).update(STATE_MOOD, undefined);
+  await stateFor(context).update(STATE_SNAPSHOT, undefined);
   updateStatusBar(undefined);
   pushState(context);
   void vscode.window.showInformationMessage('MoodSense is off. Your original setup is restored.');
 }
 
 async function focusMode(context: vscode.ExtensionContext): Promise<void> {
-  if (!context.globalState.get<SettingsSnapshot>(STATE_SNAPSHOT)) {
-    await context.globalState.update(STATE_SNAPSHOT, takeSnapshot());
+  if (!stateFor(context).get<SettingsSnapshot>(STATE_SNAPSHOT)) {
+    await stateFor(context).update(STATE_SNAPSHOT, takeSnapshot());
   }
   markApplying();
   await setMinimap(false);
@@ -721,12 +776,75 @@ async function focusMode(context: vscode.ExtensionContext): Promise<void> {
     ambientOverride = 'deep';
   }
   focusModeOn = true;
-  updateStatusBar(context.globalState.get<string>(STATE_MOOD));
+  updateStatusBar(stateFor(context).get<string>(STATE_MOOD));
   pushState(context);
   void vscode.window.showInformationMessage('MoodSense Focus Mode on. Run "MoodSense: Off" to restore.');
 }
 
 /* ---------------------------------- state ---------------------------------- */
+
+function currentFolder(): { name: string; fsPath: string } | undefined {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  return folder ? { name: folder.name, fsPath: folder.uri.fsPath } : undefined;
+}
+
+/** The mood pinned to the current workspace folder, when it still
+ *  exists. A pin beats the schedule: the folder's choice is the most
+ *  specific instruction there is. */
+function workspacePin(): string | undefined {
+  const folder = currentFolder();
+  if (!folder) {
+    return undefined;
+  }
+  const map = sanitizeWorkspaceMoods(
+    vscode.workspace.getConfiguration('moodsense').get<unknown>('workspaceMoods', {}),
+  );
+  const pinned = pinnedMoodFor(map, folder.fsPath);
+  return pinned && getProfile(pinned) ? pinned : undefined;
+}
+
+/** Where mood state lives: workspace-scoped when a folder is open (each
+ *  project remembers its own mood + restore point), global otherwise. */
+function stateFor(context: vscode.ExtensionContext): vscode.Memento {
+  return vscode.workspace.workspaceFolders?.length ? context.workspaceState : context.globalState;
+}
+
+/** Where appearance writes go: the workspace's own settings when a folder
+ *  is open — VS Code keeps those per-project natively — else the user's
+ *  global settings. */
+function appearanceTarget(): vscode.ConfigurationTarget {
+  return vscode.workspace.workspaceFolders?.length
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+}
+
+/** The value set AT the appearance scope (undefined when unset there), so
+ *  restore can remove our keys instead of pinning copies that would
+ *  shadow the user's other-scope settings forever. */
+function scopedValue(section: string, key: string): unknown {
+  const inspected = vscode.workspace.getConfiguration(section).inspect(key);
+  if (!inspected) {
+    return undefined;
+  }
+  return vscode.workspace.workspaceFolders?.length ? inspected.workspaceValue : inspected.globalValue;
+}
+
+/** The user's own base value for an optional field: their value at the
+ *  appearance scope when the snapshot knows scopes (undefined = unset =
+ *  remove our key and let their real setting show through), else the
+ *  legacy effective value. */
+function baseValue(
+  snapshot: SettingsSnapshot | undefined,
+  key: 'fontFamily' | 'lineHeight' | 'cursorStyle',
+): string | number | undefined {
+  if (!snapshot) {
+    return undefined;
+  }
+  if (snapshot.scopeValues) {
+    return snapshot.scopeValues[key] as string | number | undefined;
+  }
+  return snapshot[key];
+}
 
 function takeSnapshot(): SettingsSnapshot {
   const editor = vscode.workspace.getConfiguration('editor');
@@ -737,6 +855,14 @@ function takeSnapshot(): SettingsSnapshot {
     lineHeight: editor.get<number>('lineHeight'),
     cursorStyle: editor.get<string>('cursorStyle'),
     minimapEnabled: editor.get<boolean>('minimap.enabled'),
+    scopeValues: {
+      theme: scopedValue('workbench', 'colorTheme'),
+      fontSize: scopedValue('editor', 'fontSize'),
+      fontFamily: scopedValue('editor', 'fontFamily'),
+      lineHeight: scopedValue('editor', 'lineHeight'),
+      cursorStyle: scopedValue('editor', 'cursorStyle'),
+      minimapEnabled: scopedValue('editor', 'minimap.enabled'),
+    },
   };
 }
 
@@ -774,22 +900,22 @@ function updateStatusBar(moodId: string | undefined, profile?: MoodProfile): voi
   statusBar.color = accentFor(moodId, p);
 }
 
-async function setWorkbenchTheme(theme: string): Promise<void> {
+async function setWorkbenchTheme(theme: string | undefined): Promise<void> {
   await vscode.workspace
     .getConfiguration('workbench')
-    .update('colorTheme', theme, vscode.ConfigurationTarget.Global);
+    .update('colorTheme', theme, appearanceTarget());
 }
 
-async function setEditorFontSize(size: number): Promise<void> {
+async function setEditorFontSize(size: number | undefined): Promise<void> {
   await vscode.workspace
     .getConfiguration('editor')
-    .update('fontSize', size, vscode.ConfigurationTarget.Global);
+    .update('fontSize', size, appearanceTarget());
 }
 
-async function setMinimap(enabled: boolean): Promise<void> {
+async function setMinimap(enabled: boolean | undefined): Promise<void> {
   await vscode.workspace
     .getConfiguration('editor')
-    .update('minimap.enabled', enabled, vscode.ConfigurationTarget.Global);
+    .update('minimap.enabled', enabled, appearanceTarget());
 }
 
 /** Write an editor setting, or clear it back to the user's own value when
@@ -797,7 +923,7 @@ async function setMinimap(enabled: boolean): Promise<void> {
 async function setEditorValue(key: string, value: string | number | undefined): Promise<void> {
   await vscode.workspace
     .getConfiguration('editor')
-    .update(key, value, vscode.ConfigurationTarget.Global);
+    .update(key, value, appearanceTarget());
 }
 
 /* --------------------------- mood persistence ----------------------------- */
@@ -835,7 +961,7 @@ async function saveMood(
   // Saving is making: a brand-new mood applies immediately so you see what
   // you built, and edits to the mood you're wearing re-apply live. Editing
   // any other mood just saves it — never yank the current environment.
-  const current = context.globalState.get<string>(STATE_MOOD);
+  const current = stateFor(context).get<string>(STATE_MOOD);
   if (wasNew || current === moodId) {
     await applyMood(context, moodId);
     void vscode.window.showInformationMessage(`MoodSense: "${profile.label}" saved and applied.`);
@@ -852,7 +978,7 @@ async function deleteMood(context: vscode.ExtensionContext, id: string): Promise
   const profiles = { ...getProfiles() };
   delete profiles[id];
   await persistProfiles(profiles);
-  if (context.globalState.get<string>(STATE_MOOD) === id) {
+  if (stateFor(context).get<string>(STATE_MOOD) === id) {
     // Deleting the mood you're wearing must not leave a half-state (sound
     // playing, timer retuned, status bar claiming "off"): run the full
     // Off cleanup — restore the snapshot, silence, reset the rhythm.
@@ -937,9 +1063,9 @@ async function importMoods(context: vscode.ExtensionContext): Promise<void> {
  *  set itself. If the user toggles Zen manually, the tracker can desync —
  *  acceptable for v1 and self-correcting on the next Off. */
 async function setZen(context: vscode.ExtensionContext, on: boolean): Promise<void> {
-  const isOn = context.globalState.get<boolean>(STATE_ZEN_ON, false);
+  const isOn = stateFor(context).get<boolean>(STATE_ZEN_ON, false);
   if (isOn !== on) {
     await vscode.commands.executeCommand('workbench.action.toggleZenMode');
-    await context.globalState.update(STATE_ZEN_ON, on);
+    await stateFor(context).update(STATE_ZEN_ON, on);
   }
 }
