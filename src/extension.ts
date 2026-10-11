@@ -8,6 +8,7 @@ import { sanitizeMoodPack, sanitizeProfile, sanitizeRoutines, slugifyMoodId } fr
 import { formatTime, isQuiet, quietEndsAt, sanitizeQuietHours, sanitizeSchedule, slotFor, type QuietHours } from './schedule.js';
 import { appendSession, formatDuration, summarizeWeek, type MoodSession } from './history.js';
 import { fallbackSwatch, parseThemePalette, type ThemeSwatch } from './themePalette.js';
+import { isTypingEvent, KeyRateTracker } from './keyrate.js';
 import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
 
@@ -35,6 +36,12 @@ let lastSlotId: string | null = null;
 let focusModeOn = false;
 /** Re-entry guard + panel busy state while a mood apply is writing config. */
 let applyInFlight = false;
+/** Typing-click machinery: document changes (lengths only, never content)
+ *  feed the rate tracker; pulses go to the panel, which synthesizes clicks. */
+const keyTracker = new KeyRateTracker();
+let clicksSub: vscode.Disposable | undefined;
+let lastClickPost = 0;
+let panelProvider: MoodPanelProvider | undefined;
 
 /** MoodSense's own configuration writes also fire onDidChangeConfiguration.
  *  This timestamp marks a short window after our writes during which config
@@ -75,6 +82,13 @@ export function activate(context: vscode.ExtensionContext): void {
     openRoutinesSettings: async () => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'moodsense.routines');
     },
+    setTypingClicks: async (enabled) => {
+      await vscode.workspace
+        .getConfiguration('moodsense')
+        .update('typingClicks.enabled', enabled, vscode.ConfigurationTarget.Global);
+      syncClicksSubscription();
+      pushState(context);
+    },
     setBreaksEnabled: async (enabled) => {
       await vscode.workspace
         .getConfiguration('moodsense')
@@ -91,6 +105,14 @@ export function activate(context: vscode.ExtensionContext): void {
     roots: () => audioRoots(context.extensionUri),
   });
   breaks.onStateChange = () => pushState(context);
+  panelProvider = panel;
+  syncClicksSubscription();
+  context.subscriptions.push({
+    dispose: () => {
+      clicksSub?.dispose();
+      clicksSub = undefined;
+    },
+  });
 
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = 'moodsense.pickMood';
@@ -142,7 +164,8 @@ export function activate(context: vscode.ExtensionContext): void {
         // next boundary, not retroactively mid-slot.
         lastSlotId = slotFor(scheduleEntries(), new Date())?.slotId ?? null;
       }
-      if (e.affectsConfiguration('moodsense.profiles') || e.affectsConfiguration('moodsense.ambient') || e.affectsConfiguration('moodsense.routines') || e.affectsConfiguration('moodsense.schedule') || e.affectsConfiguration('moodsense.quietHours') || e.affectsConfiguration('moodsense.pomodoro')) {
+      if (e.affectsConfiguration('moodsense.profiles') || e.affectsConfiguration('moodsense.ambient') || e.affectsConfiguration('moodsense.routines') || e.affectsConfiguration('moodsense.schedule') || e.affectsConfiguration('moodsense.quietHours') || e.affectsConfiguration('moodsense.pomodoro') || e.affectsConfiguration('moodsense.typingClicks')) {
+        syncClicksSubscription();
         pushState(context);
       }
       const touchesAppearance =
@@ -240,7 +263,30 @@ async function closeSession(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update(STATE_HISTORY, updated);
 }
 
-async function runRoutine(context: vscode.ExtensionContext, name: string): Promise<void> {
+async /** Subscribe/unsubscribe the typing tracker to match the setting. */
+function syncClicksSubscription(): void {
+  const enabled = vscode.workspace
+    .getConfiguration('moodsense')
+    .get<boolean>('typingClicks.enabled', false);
+  if (enabled && !clicksSub) {
+    clicksSub = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (!isTypingEvent(e.contentChanges.map((c) => c.text.length))) {
+        return;
+      }
+      const now = Date.now();
+      keyTracker.record(now);
+      if (now - lastClickPost >= 110) {
+        lastClickPost = now;
+        panelProvider?.postClick(keyTracker.tier(now));
+      }
+    });
+  } else if (!enabled && clicksSub) {
+    clicksSub.dispose();
+    clicksSub = undefined;
+  }
+}
+
+function runRoutine(context: vscode.ExtensionContext, name: string): Promise<void> {
   const routines = sanitizeRoutines(
     vscode.workspace.getConfiguration('moodsense').get<unknown>('routines', []),
   );
@@ -299,6 +345,7 @@ function buildState(context: vscode.ExtensionContext): PanelState {
       !currentMood &&
       history.length === 0,
     applying: applyInFlight,
+    typingClicks: cfg.get<boolean>('typingClicks.enabled', false),
     volume: cfg.get<number>('ambient.volume', 0.7),
     breaksEnabled: cfg.get<boolean>('breaks.enabled', true),
     nextBreakAt: breaks.nextFireAt,

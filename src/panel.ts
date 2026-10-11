@@ -14,6 +14,7 @@ export interface PanelActions {
   setBreaksEnabled(enabled: boolean): Promise<void>;
   dismissWelcome(): Promise<void>;
   openRoutinesSettings(): Promise<void>;
+  setTypingClicks(enabled: boolean): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
   deleteMood(id: string): Promise<void>;
   resetMood(id: string): Promise<void>;
@@ -97,8 +98,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   /** Called when VS Code's active color theme changes. Visible panel: ask
    *  the document to repaint and re-render. Hidden panel: remember whether
    *  the theme kind flipped, so the reveal can rebuild if needed. */
-  notifyThemeChanged(kind: vscode.ColorThemeKind): void {
-    if (!this.view) {
+  notifyThemeChanged(kind: vscode.ColorThemeKind): void {    if (!this.view) {
       return;
     }
     if (this.view.visible) {
@@ -107,6 +107,14 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       this.staleByTheme = true;
     }
     this.lastThemeKind = kind;
+  }
+
+  /** Forward a typing-click pulse (with the current speed tier) to the
+   *  webview, which synthesizes the actual click sound. */
+  postClick(tier: number): void {
+    if (this.view) {
+      void this.view.webview.postMessage({ type: 'click', tier });
+    }
   }
 
   /** Push fresh state (and retarget the audio) — call after anything changes. */
@@ -203,6 +211,11 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         break;
       case 'openRoutinesSettings':
         await this.actions.openRoutinesSettings();
+        break;
+      case 'setTypingClicks':
+        if (typeof msg.value === 'number') {
+          await this.actions.setTypingClicks(msg.value === 1);
+        }
         break;
       case 'saveMood':
         await this.actions.saveMood(msg.id ?? null, msg.profile);
@@ -374,6 +387,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   .pv-bar .pv-mood { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 10.5px; }
   .pv-bar .pv-mood .mdot { width: 7px; height: 7px; border-radius: 50%; }
   .pv-code { font-family: var(--vscode-editor-font-family, Consolas, monospace); padding: 9px 11px; line-height: 1.55; white-space: pre; overflow: hidden; }
+  #eq { width: 100%; height: 38px; display: block; margin-top: 10px; }
+  #eq.hidden { display: none; }
 
   .labelrow { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 0 8px; }
   .labelrow .label { margin: 0; }
@@ -484,6 +499,17 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     <input type="range" id="volume" min="0" max="1" step="0.01" value="0.7" aria-label="Ambient volume" />
   </div>
   <div class="hint" id="audioHint">Sound plays from this panel. The first time, press play once.</div>
+  <canvas id="eq" class="hidden" height="38"></canvas>
+  <div class="hint hidden" id="eqHint">Visualizer unavailable in this VS Code build — your sound is unaffected.</div>
+
+  <div class="label">Typing</div>
+  <div class="seg" id="typingSeg">
+    <button data-t="0">Clicks off</button>
+    <button data-t="1">Clicks on</button>
+  </div>
+  <div class="hint">Speed-aware key clicks while you type in the editor — soft and low
+    at an easy pace, brighter as you fly. Only keystroke counts are measured,
+    never content. <span id="tierLabel"></span></div>
 
   <div class="label" id="breakLabel">Break</div>
   <div class="breakrow">
@@ -675,6 +701,133 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       ramp(el, 0, () => el.pause());
     }
 
+    /* ——— Web Audio: live equalizer + typing clicks ———
+     * The audible elements are NEVER routed through Web Audio: in builds
+     * where webview media is not CORS-clean, a routed element goes silent.
+     * A muted MIRROR of the main track feeds the analyser instead; if it
+     * reads dead air, the visualizer declares itself unavailable and hides
+     * rather than faking bars. Your sound path is never touched. */
+    let actx = null;
+    let analyser = null;
+    let mirror = null;
+    let eqData = null;
+    let eqDead = false;
+    let eqSince = 0;
+    let eqSawSignal = false;
+    let noiseBuf = null;
+    function ensureGraph() {
+      if (actx || eqDead) return;
+      try {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        mirror = document.createElement('audio');
+        mirror.loop = true;
+        mirror.preload = 'auto';
+        const srcNode = actx.createMediaElementSource(mirror);
+        analyser = actx.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.78;
+        const mute = actx.createGain();
+        mute.gain.value = 0;
+        srcNode.connect(analyser);
+        analyser.connect(mute);
+        mute.connect(actx.destination);
+        eqData = new Uint8Array(analyser.frequencyBinCount);
+      } catch (e) {
+        eqDead = true;
+        actx = null;
+      }
+    }
+    function syncMirror() {
+      const canvas = document.getElementById('eq');
+      const primary = els.primary;
+      if (!primary.dataset.src || !wantsPlay) {
+        if (mirror) mirror.pause();
+        canvas.classList.add('hidden');
+        return;
+      }
+      ensureGraph();
+      if (!actx || !mirror) {
+        canvas.classList.add('hidden');
+        return;
+      }
+      if (actx.state === 'suspended') actx.resume().catch(() => {});
+      if (mirror.dataset.src !== primary.dataset.src) {
+        mirror.src = primary.dataset.src;
+        mirror.dataset.src = primary.dataset.src;
+        eqSince = Date.now();
+        eqSawSignal = false;
+      }
+      mirror.play().catch(() => {});
+      if (!eqDead) {
+        canvas.classList.remove('hidden');
+        requestAnimationFrame(drawEq);
+      }
+    }
+    function drawEq() {
+      const canvas = document.getElementById('eq');
+      if (!analyser || !mirror || mirror.paused || canvas.classList.contains('hidden')) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.floor(canvas.clientWidth * dpr);
+      if (w > 0 && canvas.width !== w) canvas.width = w;
+      const h = canvas.height;
+      analyser.getByteFrequencyData(eqData);
+      let max = 0;
+      for (const v of eqData) if (v > max) max = v;
+      if (max > 8) eqSawSignal = true;
+      if (!eqSawSignal && Date.now() - eqSince > 1500) {
+        eqDead = true;
+        canvas.classList.add('hidden');
+        document.getElementById('eqHint').classList.remove('hidden');
+        return;
+      }
+      const c2 = canvas.getContext('2d');
+      c2.clearRect(0, 0, canvas.width, h);
+      const bars = 26;
+      const gap = 2 * dpr;
+      const bw = (canvas.width - gap * (bars - 1)) / bars;
+      const prof = state && state.currentMood ? state.profiles[state.currentMood] : null;
+      c2.fillStyle = (prof && prof.accent) || '#7C8CF8';
+      for (let i = 0; i < bars; i++) {
+        const bin = Math.floor(Math.pow(i / bars, 1.6) * eqData.length * 0.85) + 1;
+        const v = eqData[Math.min(bin, eqData.length - 1)] / 255;
+        const bh = Math.max(2 * dpr, v * h);
+        c2.globalAlpha = 0.35 + v * 0.65;
+        c2.fillRect(i * (bw + gap), h - bh, bw, bh);
+      }
+      c2.globalAlpha = 1;
+      requestAnimationFrame(drawEq);
+    }
+    /* Speed-aware clicks: a synthesized tick whose pitch and weight follow
+     * the typing tier the host measured (counts only — never content). */
+    function playClick(tier) {
+      if (!state || !state.typingClicks) return;
+      ensureGraph();
+      if (!actx) return;
+      if (actx.state === 'suspended') actx.resume().catch(() => {});
+      if (!noiseBuf) {
+        noiseBuf = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.08), actx.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      }
+      const t = actx.currentTime;
+      const srcNode = actx.createBufferSource();
+      srcNode.buffer = noiseBuf;
+      const bp = actx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = [1700, 2500, 3300][tier] || 2500;
+      bp.Q.value = 7;
+      const g = actx.createGain();
+      g.gain.setValueAtTime([0.1, 0.17, 0.24][tier] || 0.17, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + [0.07, 0.055, 0.04][tier]);
+      srcNode.connect(bp);
+      bp.connect(g);
+      g.connect(actx.destination);
+      srcNode.start(t);
+      srcNode.stop(t + 0.09);
+      document.getElementById('tierLabel').textContent =
+        'Right now: ' + ['easy pace', 'cruising', 'flying'][tier] + '.';
+    }
+
     function fmt(ms) {
       if (ms <= 0) return 'now';
       const s = Math.ceil(ms / 1000);
@@ -785,6 +938,12 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
 
       document.getElementById('quietNote').classList.toggle('hidden', !state.quietActive);
+      document.querySelectorAll('#typingSeg button').forEach((b) => {
+        b.classList.toggle('active', (b.dataset.t === '1') === !!state.typingClicks);
+      });
+      if (!state.typingClicks) {
+        document.getElementById('tierLabel').textContent = '';
+      }
 
       const lseg = document.getElementById('layerSeg');
       lseg.innerHTML = '';
@@ -863,9 +1022,15 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         }
       }
       playBtn.innerHTML = wantsPlay ? PAUSE : PLAY;
+      syncMirror();
     });
     els.primary.addEventListener('play', () => { playBtn.innerHTML = PAUSE; });
     els.primary.addEventListener('pause', () => { if (!wantsPlay) playBtn.innerHTML = PLAY; });
+    document.querySelectorAll('#typingSeg button').forEach((b) => {
+      b.addEventListener('click', () => {
+        vscode.postMessage({ type: 'setTypingClicks', value: parseInt(b.dataset.t, 10) });
+      });
+    });
 
     let volTimer;
     document.getElementById('volume').addEventListener('input', (e) => {
@@ -1129,8 +1294,12 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         render();
       } else if (msg.type === 'audio') {
         setTrack(els[msg.slot] || els.primary, msg.src, msg.volume);
+        if ((msg.slot || 'primary') === 'primary') syncMirror();
       } else if (msg.type === 'audioStop') {
         stopTrack(els[msg.slot] || els.primary);
+        if ((msg.slot || 'primary') === 'primary') syncMirror();
+      } else if (msg.type === 'click') {
+        playClick(typeof msg.tier === 'number' ? msg.tier : 1);
       }
     });
     vscode.postMessage({ type: 'ready' });

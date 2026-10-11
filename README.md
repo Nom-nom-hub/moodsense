@@ -81,6 +81,14 @@ MoodSense is built to be owned, not just used:
   pick a mood by hand mid-window and it stands until the next one.
 - **Quiet hours** — `moodsense.quietHours`: sound mutes and reminders wait
   until the window ends.
+- **Live equalizer** — the panel visualizes your soundscape with a real
+  AnalyserNode fed by a muted mirror of the track, so your audible audio
+  is never routed (or risked). If a build can't analyze webview media,
+  the visualizer declares itself unavailable instead of faking it.
+- **Typing clicks** — `moodsense.typingClicks.enabled` (or the panel's
+  Typing section): speed-aware synthesized key clicks in three tiers —
+  easy, cruising, flying. The tracker counts keystrokes only; your text
+  is never read or stored. Off by default.
 - **Pomodoro** — `moodsense.pomodoro.enabled`: 25/5 focus cycles on the
   timer; the soundscape pauses during breaks.
 - **Layered sound** — every mood can carry a second track underneath

@@ -31,6 +31,8 @@ export interface PanelState {
   showWelcome: boolean;
   /** True while a mood apply is in flight (panel rows disable). */
   applying: boolean;
+  /** Typing click sounds enabled (speed-aware, panel-synthesized). */
+  typingClicks: boolean;
   volume: number;
   breaksEnabled: boolean;
   /** Epoch ms when the next break fires, or null when no timer is running. */

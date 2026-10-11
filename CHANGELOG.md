@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 — 2026-10-11
+
+Reactive sound, CodeSound-style — built so it can't hurt the audio it
+decorates:
+
+- **Live equalizer** in the panel, driven by a real AnalyserNode over the
+  main ambient track. Your audible elements are never routed through Web
+  Audio (in builds where webview media isn't CORS-clean, a routed element
+  goes silent) — a muted mirror feeds the analyser instead. If analysis
+  reads dead air in your build, the visualizer says so and hides; the
+  sound is never at risk, and the bars are never faked
+- **Typing-speed-aware clicks** (opt-in, `moodsense.typingClicks.enabled`
+  or the panel's Typing section): a rolling keystroke-rate tracker in the
+  extension — counts only, your text is never read or stored — picks one
+  of three synthesized click tiers: easy (soft, low), cruising, flying
+  (bright, light). Pastes don't count; clicks throttle to ~9/second
+
+
 ## 0.6.0 — 2026-10-11
 
 Panel polish pass:

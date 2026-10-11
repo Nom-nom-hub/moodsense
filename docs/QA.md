@@ -94,3 +94,12 @@ list covers what only a live IDE can prove.
 - [ ] Countdown in the last minute: amber, then red + breathing near zero
 - [ ] Status bar shows an icon glyph before the mood name
 - [ ] Empty routines: hint + Settings link visible
+
+## Reactive sound checks (0.7.0)
+- [ ] Play an ambient track: the equalizer dances with the actual audio;
+      pause → it hides; switch tracks → it follows
+- [ ] Typing section → Clicks on: type slowly (soft low ticks), then fast
+      (brighter ticks); the hint names the current tier; paste a big block
+      → no click burst
+- [ ] If the "Visualizer unavailable" note appears on your build, note it —
+      that's the honest-degradation path working; sound must be unaffected
