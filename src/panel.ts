@@ -15,6 +15,9 @@ export interface PanelActions {
   dismissWelcome(): Promise<void>;
   openRoutinesSettings(): Promise<void>;
   setTypingClicks(enabled: boolean): Promise<void>;
+  addYouTube(url: string): Promise<void>;
+  removeYouTube(token: string): Promise<void>;
+  pickAudioFolder(): Promise<void>;
   saveMood(id: string | null, profile: unknown): Promise<void>;
   deleteMood(id: string): Promise<void>;
   resetMood(id: string): Promise<void>;
@@ -36,6 +39,7 @@ interface PanelMessage {
   track?: AmbientTrack;
   profile?: unknown;
   name?: string;
+  text?: string;
 }
 
 /** The MoodSense control panel: a WebviewView in the Activity Bar.
@@ -148,10 +152,25 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (!this.view) {
       return;
     }
+    // YouTube tracks play through the embedded player, primary slot only.
+    if (typeof track === 'string' && track.startsWith('yt:')) {
+      if (slot === 'primary') {
+        void this.view.webview.postMessage({ type: 'youtube', id: track.slice(3), volume });
+      } else {
+        void this.view.webview.postMessage({ type: 'audioStop', slot });
+      }
+      return;
+    }
     const uri = this.audio.uriFor(track);
     if (!uri) {
+      if (slot === 'primary') {
+        void this.view.webview.postMessage({ type: 'youtubeStop' });
+      }
       void this.view.webview.postMessage({ type: 'audioStop', slot });
       return;
+    }
+    if (slot === 'primary') {
+      void this.view.webview.postMessage({ type: 'youtubeStop' });
     }
     void this.view.webview.postMessage({
       type: 'audio',
@@ -217,6 +236,19 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
           await this.actions.setTypingClicks(msg.value === 1);
         }
         break;
+      case 'addYouTube':
+        if (msg.text) {
+          await this.actions.addYouTube(msg.text);
+        }
+        break;
+      case 'removeYouTube':
+        if (msg.id) {
+          await this.actions.removeYouTube(msg.id);
+        }
+        break;
+      case 'pickFolder':
+        await this.actions.pickAudioFolder();
+        break;
       case 'saveMood':
         await this.actions.saveMood(msg.id ?? null, msg.profile);
         break;
@@ -249,7 +281,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource}; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource}; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; frame-src https://www.youtube-nocookie.com;" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MoodSense</title>
 <style>
@@ -389,6 +421,14 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   .pv-code { font-family: var(--vscode-editor-font-family, Consolas, monospace); padding: 9px 11px; line-height: 1.55; white-space: pre; overflow: hidden; }
   #eq { width: 100%; height: 38px; display: block; margin-top: 10px; }
   #eq.hidden { display: none; }
+  .ytadd { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .ytadd input {
+    flex: 1; min-width: 0; background: var(--vscode-input-background, transparent); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 12px;
+  }
+  #ytWrap { margin-top: 10px; }
+  #ytPlayer iframe { width: 100%; height: 152px; border: 0; border-radius: 8px; display: block; background: #000; }
+  .seg .rm { padding: 5px 7px; margin-left: -4px; }
 
   .labelrow { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 0 8px; }
   .labelrow .label { margin: 0; }
@@ -492,6 +532,20 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
   <div class="seg" id="trackSeg"></div>
   <div class="hint hidden" id="customLabel" style="margin: 10px 0 6px;">Your audio</div>
   <div class="seg wrap hidden" id="customSeg"></div>
+  <div style="margin: 10px 0 2px;">
+    <button class="linkish" id="pickFolder">Choose music folder…</button>
+    <span class="hint" id="folderNote"> — your files stay on this machine.</span>
+  </div>
+  <div class="hint" style="margin: 10px 0 6px;">YouTube · streams in the mini player</div>
+  <div class="seg wrap" id="ytSeg"></div>
+  <div class="ytadd">
+    <input type="text" id="ytInput" placeholder="Paste a YouTube link…" />
+    <button class="mini" id="ytAdd">Add</button>
+  </div>
+  <div id="ytWrap" class="hidden">
+    <div id="ytPlayer"></div>
+    <div class="hint">YouTube's own embedded player. If it starts silent, press play on the video once.</div>
+  </div>
   <div class="hint" style="margin: 10px 0 6px;">Layer · a second sound underneath</div>
   <div class="seg wrap" id="layerSeg"></div>
   <div class="transport">
@@ -818,6 +872,45 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       c2.globalAlpha = 1;
       requestAnimationFrame(drawEq);
     }
+    /* ——— YouTube: official embedded player, driven by postMessage ———
+     * No extraction, ever: the iframe IS YouTube's player. MoodSense only
+     * tells it what to load, how loud, and when to pause. */
+    let ytFrame = null;
+    let ytId = null;
+    let ytActive = false;
+    function ytCommand(func, args) {
+      if (ytFrame && ytFrame.contentWindow) {
+        ytFrame.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func, args: args || [] }),
+          'https://www.youtube-nocookie.com',
+        );
+      }
+    }
+    function setYouTube(id, vol) {
+      ytActive = true;
+      document.getElementById('ytWrap').classList.remove('hidden');
+      if (ytId !== id) {
+        ytId = id;
+        const holder = document.getElementById('ytPlayer');
+        holder.innerHTML = '';
+        ytFrame = document.createElement('iframe');
+        ytFrame.allow = 'autoplay; encrypted-media; picture-in-picture';
+        ytFrame.src = 'https://www.youtube-nocookie.com/embed/' + id + '?enablejsapi=1&rel=0&playsinline=1';
+        ytFrame.addEventListener('load', () => {
+          ytCommand('setVolume', [Math.round(vol * 100)]);
+          if (wantsPlay) ytCommand('playVideo');
+        });
+        holder.appendChild(ytFrame);
+      } else {
+        ytCommand('setVolume', [Math.round(vol * 100)]);
+        ytCommand(wantsPlay ? 'playVideo' : 'pauseVideo');
+      }
+    }
+    function stopYouTube() {
+      ytActive = false;
+      if (ytFrame) ytCommand('pauseVideo');
+      document.getElementById('ytWrap').classList.add('hidden');
+    }
     /* Speed-aware clicks: synthesized ticks whose character belongs to the
      * mood being worn — each mood owns a click family, and reactive moods
      * sharpen with the typing tier the host measured (counts only). */
@@ -914,6 +1007,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
     function trackLabel(token) {
       if (token === 'none') return 'Silent';
+      if (token.startsWith('yt:')) return 'YouTube';
       if (token.startsWith('file:')) {
         const found = state && state.customTracks.find((t) => t.token === token);
         return found ? found.label : token.slice(5);
@@ -1011,6 +1105,24 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
 
       document.getElementById('quietNote').classList.toggle('hidden', !state.quietActive);
+      document.getElementById('folderNote').textContent =
+        state.customTracks && state.customTracks.length > 0 ? '' : ' — your files stay on this machine.';
+      const yseg = document.getElementById('ytSeg');
+      yseg.innerHTML = '';
+      for (const t of state.youtubeTracks || []) {
+        const b = document.createElement('button');
+        b.className = state.ambientTrack === t.token ? 'active' : '';
+        b.textContent = 'YouTube';
+        b.title = 'Play this video as your soundscape (' + t.id + ')';
+        b.addEventListener('click', () => vscode.postMessage({ type: 'track', track: t.token }));
+        yseg.appendChild(b);
+        const rm = document.createElement('button');
+        rm.className = 'rm';
+        rm.textContent = '×';
+        rm.title = 'Remove from your library';
+        rm.addEventListener('click', () => vscode.postMessage({ type: 'removeYouTube', id: t.token }));
+        yseg.appendChild(rm);
+      }
       clicksOverride = !!state.typingClicks;
       document.querySelectorAll('#typingSeg button').forEach((b) => {
         b.classList.toggle('active', (b.dataset.t === '1') === !!state.typingClicks);
@@ -1086,6 +1198,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     playBtn.addEventListener('click', () => {
       wantsPlay = !wantsPlay;
+      if (ytActive) ytCommand(wantsPlay ? 'playVideo' : 'pauseVideo');
       for (const el of [els.primary, els.layer]) {
         if (!el.dataset.src) continue;
         if (wantsPlay) {
@@ -1128,6 +1241,7 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     let volTimer;
     document.getElementById('volume').addEventListener('input', (e) => {
       baseVolume = parseFloat(e.target.value);
+      if (ytActive) ytCommand('setVolume', [Math.round(baseVolume * 100)]);
       if (wantsPlay) {
         if (els.primary.dataset.src) ramp(els.primary, baseVolume);
         if (els.layer.dataset.src) ramp(els.layer, baseVolume * 0.55);
@@ -1136,6 +1250,17 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
       els.layer.dataset.targetVol = String(baseVolume * 0.55);
       clearTimeout(volTimer);
       volTimer = setTimeout(() => vscode.postMessage({ type: 'volume', value: baseVolume }), 200);
+    });
+    document.getElementById('pickFolder').addEventListener('click', () => vscode.postMessage({ type: 'pickFolder' }));
+    document.getElementById('ytAdd').addEventListener('click', () => {
+      const input = document.getElementById('ytInput');
+      if (input.value.trim()) {
+        vscode.postMessage({ type: 'addYouTube', text: input.value.trim() });
+        input.value = '';
+      }
+    });
+    document.getElementById('ytInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('ytAdd').click();
     });
     document.getElementById('offBtn').addEventListener('click', () => vscode.postMessage({ type: 'off' }));
     document.getElementById('welcomeTry').addEventListener('click', () => vscode.postMessage({ type: 'setMood', id: 'focused' }));
@@ -1275,7 +1400,8 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
 
       const amb = document.getElementById('f-ambient');
       amb.innerHTML = '';
-      const ambChoices = [...TRACKS, ...(state.customTracks || []).map((t) => [t.token, t.label])];
+      const ambChoices = [...TRACKS, ...(state.customTracks || []).map((t) => [t.token, t.label]),
+        ...(state.youtubeTracks || []).map((t) => [t.token, 'YouTube'])];
       for (const [track, label] of ambChoices) {
         const b = document.createElement('button');
         b.className = selAmbient === track ? 'active' : '';
@@ -1434,6 +1560,11 @@ export class MoodPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
         if ((msg.slot || 'primary') === 'primary') syncMirror();
       } else if (msg.type === 'click') {
         playClick(typeof msg.tier === 'number' ? msg.tier : 1);
+      } else if (msg.type === 'youtube') {
+        stopTrack(els.primary);
+        setYouTube(msg.id, msg.volume);
+      } else if (msg.type === 'youtubeStop') {
+        stopYouTube();
       }
     });
     vscode.postMessage({ type: 'ready' });

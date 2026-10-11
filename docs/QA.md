@@ -109,3 +109,10 @@ list covers what only a live IDE can prove.
 - [ ] Wear Relaxed: clicks turn soft and steady regardless of speed
 - [ ] Editor → Thock + Preview click: three presses climb easy → cruising → flying
 - [ ] Set a mood's clicks to Off: it stays silent while worn; others still click
+
+## Your-music checks (0.9.0)
+- [ ] Choose music folder…: picker opens, files appear as chips after picking
+- [ ] Paste a YouTube link → Add: chip appears; click it → mini player streams;
+      play/pause button and volume slider drive the video
+- [ ] Assign the video to a mood in the editor; switch moods → player swaps/stops
+- [ ] Remove a library entry with ×; a bad link shows a clean warning

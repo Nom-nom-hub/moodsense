@@ -7,8 +7,10 @@ you're working: set a mood in the status bar and your theme, font size,
 ambient soundscape, and break rhythm follow. Switch it off and your original
 setup comes back, exactly as it was.
 
-100% local. No telemetry, no accounts, no network calls. Your mood never
-leaves your machine.
+100% local. No telemetry, no accounts, and MoodSense itself makes no
+network calls. (YouTube tracks, if you add them, play inside YouTube's
+own embedded player — their requests, their terms, like any web embed.)
+Your mood never leaves your machine.
 
 ## Moods
 
@@ -57,9 +59,13 @@ MoodSense is built to be owned, not just used:
   (`moodsense.applyLayoutChanges`) or invoke **Focus Mode** yourself. Your IDE
   never rearranges itself uninvited.
 - **Ambient sound** — three generated soundscapes (deep drone, rain, wind)
-  played from the control panel — or **your own audio**: set
-  `moodsense.ambient.customDirectory` to a folder of audio files and they
-  appear in the panel under "Your audio," ready to play or assign to a mood.
+  played from the control panel — or **your own music**, two ways:
+  *Your audio:* hit **Choose music folder…** in the panel, pick a folder
+  of audio files, and they appear as playable chips, ready to assign to
+  any mood (stored as filenames only — the files never move).
+  *YouTube:* paste a video link in the panel and it joins your library,
+  streaming through YouTube's official embedded mini-player; moods can
+  own a video as their soundscape just like a file.
 - **Break reminders** — a plain, honest timer (default 50 min) with Snooze /
   Dismiss / Turn off. The Tired mood shortens the interval automatically.
 

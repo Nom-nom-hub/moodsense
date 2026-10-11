@@ -33,6 +33,8 @@ export interface PanelState {
   applying: boolean;
   /** Typing click sounds enabled (speed-aware, panel-synthesized). */
   typingClicks: boolean;
+  /** The user's YouTube library (video ids), as playable track tokens. */
+  youtubeTracks: { token: string; id: string }[];
   volume: number;
   breaksEnabled: boolean;
   /** Epoch ms when the next break fires, or null when no timer is running. */

@@ -252,6 +252,15 @@
           "default": false,
           "order": 26,
           "description": "Speed-aware typing click sounds, synthesized in the panel. A rolling keystroke-rate tracker (counts only \u2014 your text is never read or stored) picks one of three click tiers: easy, cruising, flying. Off by default."
+        },
+        "moodsense.ambient.youtubeUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "order": 24,
+          "description": "Your YouTube music library: video URLs or ids, added from the panel. Stored as video ids; played through YouTube's embedded player in the panel."
         }
       },
       "title": "MoodSense"
@@ -367,6 +376,6 @@
     "lint": "eslint src",
     "test": "vitest run"
   },
-  "version": "0.8.1",
+  "version": "0.9.0",
   "icon": "media/icon.png"
 }

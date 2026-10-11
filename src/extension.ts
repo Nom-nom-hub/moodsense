@@ -9,6 +9,7 @@ import { formatTime, isQuiet, quietEndsAt, sanitizeQuietHours, sanitizeSchedule,
 import { appendSession, formatDuration, summarizeWeek, type MoodSession } from './history.js';
 import { fallbackSwatch, parseThemePalette, type ThemeSwatch } from './themePalette.js';
 import { isTypingEvent, KeyRateTracker } from './keyrate.js';
+import { parseYouTubeId, sanitizeYouTubeIds } from './youtube.js';
 import { MoodPanelProvider } from './panel.js';
 import { BreakTimer } from './breaks.js';
 
@@ -88,6 +89,42 @@ export function activate(context: vscode.ExtensionContext): void {
         .update('typingClicks.enabled', enabled, vscode.ConfigurationTarget.Global);
       syncClicksSubscription();
       pushState(context);
+    },
+    addYouTube: async (url) => {
+      const id = parseYouTubeId(url);
+      const cfg = vscode.workspace.getConfiguration('moodsense');
+      if (!id) {
+        void vscode.window.showWarningMessage('MoodSense: that does not look like a YouTube video link.');
+        return;
+      }
+      const ids = sanitizeYouTubeIds(cfg.get<unknown>('ambient.youtubeUrls', []));
+      if (!ids.includes(id)) {
+        ids.push(id);
+        await cfg.update('ambient.youtubeUrls', ids, vscode.ConfigurationTarget.Global);
+      }
+      pushState(context);
+    },
+    removeYouTube: async (token) => {
+      const cfg = vscode.workspace.getConfiguration('moodsense');
+      const ids = sanitizeYouTubeIds(cfg.get<unknown>('ambient.youtubeUrls', [])).filter(
+        (id) => `yt:${id}` !== token,
+      );
+      await cfg.update('ambient.youtubeUrls', ids, vscode.ConfigurationTarget.Global);
+      pushState(context);
+    },
+    pickAudioFolder: async () => {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: 'Use this folder for my music',
+      });
+      if (picked && picked[0]) {
+        await vscode.workspace
+          .getConfiguration('moodsense')
+          .update('ambient.customDirectory', picked[0].fsPath, vscode.ConfigurationTarget.Global);
+        pushState(context);
+      }
     },
     setBreaksEnabled: async (enabled) => {
       await vscode.workspace
@@ -346,6 +383,10 @@ function buildState(context: vscode.ExtensionContext): PanelState {
       history.length === 0,
     applying: applyInFlight,
     typingClicks: cfg.get<boolean>('typingClicks.enabled', false),
+    youtubeTracks: sanitizeYouTubeIds(cfg.get<unknown>('ambient.youtubeUrls', [])).map((id) => ({
+      token: `yt:${id}`,
+      id,
+    })),
     volume: cfg.get<number>('ambient.volume', 0.7),
     breaksEnabled: cfg.get<boolean>('breaks.enabled', true),
     nextBreakAt: breaks.nextFireAt,

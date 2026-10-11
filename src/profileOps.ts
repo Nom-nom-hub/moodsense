@@ -1,4 +1,5 @@
 import type { AmbientTrack, ClickProfile, CursorStyle, MoodProfile } from './moods.js';
+import { isYouTubeToken } from './youtube.js';
 
 /** Pure validation/sanitization for mood profiles — used by the panel's
  *  mood editor on save and by mood-pack import. Anything a user types,
@@ -15,7 +16,8 @@ function isClickProfileLocal(x: unknown): x is ClickProfile {
 
 /** A custom track token is "file:<name>" where <name> is a bare filename —
  *  no path separators, ever, so a shared mood pack can never point the
- *  player outside the user's own audio folder. */
+ *  player outside the user's own audio folder. A "yt:<videoId>" token
+ *  plays through YouTube's embedded player. */
 function isAmbientTrack(x: unknown): x is AmbientTrack {
   if (typeof x !== 'string') {
     return false;
@@ -23,7 +25,7 @@ function isAmbientTrack(x: unknown): x is AmbientTrack {
   if ((AMBIENT_TRACKS as string[]).includes(x)) {
     return true;
   }
-  return /^file:[^/\\]+$/.test(x);
+  return /^file:[^/\\]+$/.test(x) || isYouTubeToken(x);
 }
 const CURSOR_STYLES: CursorStyle[] = ['line', 'block', 'underline', 'line-thin', 'block-outline', 'underline-thin'];
 const HEX = /^#[0-9A-Fa-f]{6}$/;

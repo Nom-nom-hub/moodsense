@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0 — 2026-10-11
+
+Your music, without the homework:
+
+- **Choose music folder…** — a button in the panel opens the native
+  folder picker and saves the setting for you. No more typing paths
+  into Settings to use your own audio files
+- **YouTube tracks** — paste a video link in the panel and it joins your
+  library as a chip; moods can own a video as their soundscape, and the
+  panel's play/pause and volume drive it. Playback runs through
+  YouTube's official embedded player (a small visible mini-player) —
+  the sanctioned route: no ripping, no extraction, no ToS games. Only
+  the video id is stored. Remove any entry with its ×
+
+
 ## 0.8.1 — 2026-10-11
 
 - **Typing-click toggle fix:** the setting flipped but clicks stayed
